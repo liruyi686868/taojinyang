@@ -909,12 +909,11 @@ async function startArch() {
     await sleep(delay);
   }
 
-  // === Phase 2: DexScreener ===
-  logLine('📡 Phase 2: DexScreener API...');
+  // === Phase 2: DexScreener token profiles ===
+  logLine('📡 Phase 2: DexScreener最新代币...');
   try {
     const dsUrls = [
       'https://api.dexscreener.com/token-profiles/latest/v1',
-      'https://api.dexscreener.com/token-boosts/top/v1?chainId=bsc',
     ];
     for (const dsUrl of dsUrls) {
       if (archAbort) break;
@@ -930,7 +929,7 @@ async function startArch() {
           const addr = t.toLowerCase();
           if (!seen.has(addr)) { seen.add(addr); newCount++; totalNewTokens++; }
         }
-        logLine(`  DexScreener: 发现 ${tokens.length} 个, 新增 ${newCount} 个`);
+        logLine(`  DexScreener profiles: ${tokens.length} 个, 新增 ${newCount} 个`);
 
         for (const t of tokens) {
           if (archAbort) break;
@@ -938,74 +937,127 @@ async function startArch() {
           if (FILTER_TOKENS.has(addr)) continue;
           totalProcessed++;
           archStats.scanned++;
-          document.getElementById('archStatus').textContent = `[DexScreener] ${addr.slice(0,14)}...`;
+          document.getElementById('archStatus').textContent = `[DexProf] ${addr.slice(0,14)}...`;
           document.getElementById('archProg').style.width = (totalProcessed / Math.max(totalEstimate, 1) * 100) + '%';
           await scanArchTarget(addr, checkLPFlag, ownerOnly, useGoPlus, logLine);
           updateArchStats();
           await sleep(delay);
         }
-      } catch (e) { logLine(`  ⚠ DexScreener错误: ${e.message}`, 'warn'); }
+      } catch (e) { logLine(`  ⚠ DexScreener profiles错误: ${e.message}`, 'warn'); }
     }
   } catch (e) { logLine(`⚠ DexScreener阶段失败: ${e.message}`, 'warn'); }
 
-  // === Phase 3: PCS Subgraph with cursor pagination ===
-  logLine('📡 Phase 3: PCS子图游标分页 (无skip限制, 保证数据不重复)...');
-  let cursor = '';
-  let pageNum = 0;
+  // === Phase 3: DexScreener search + BSCScan verified contracts ===
+  logLine('📡 Phase 3: DexScreener搜索(多页) + BSCScan最新合约...');
 
-  for (let p = 0; p < pages; p++) {
+  // Phase 3a: DexScreener search — multiple pages of BSC tokens
+  // Uses DexScreener's free search API to pull tokens by liquidity
+  const dsSearchQueries = [
+    'https://api.dexscreener.com/latest/dex/search?q=bsc',
+    'https://api.dexscreener.com/latest/dex/search?q=bnb',
+  ];
+
+  for (const dsSearchUrl of dsSearchQueries) {
     if (archAbort) break;
-    pageNum = p + 1;
-    document.getElementById('archStatus').textContent = `PCS 第${pageNum}/${pages}页 (cursor: ${cursor.slice(0,12)}...)`;
-
     try {
-      const whereClause = cursor
-        ? `id_gt: "${cursor}", reserveUSD_gt: "0.5"`
-        : `reserveUSD_gt: "0.5"`;
-      const query = `{ pairs(first: 1000, orderBy: id, orderDirection: asc, where: { ${whereClause} }) { id token0 { id symbol } token1 { id symbol } reserveUSD createdAtTimestamp } }`;
-      const resp = await fetch(PCS_SUBGRAPH, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
-      });
-      const data = await resp.json();
-
-      if (!data.data || !data.data.pairs || data.data.pairs.length === 0) {
-        logLine(`⚠ PCS第${pageNum}页无数据, 已到末尾`, 'warn');
-        break;
+      const raw = await fetch(dsSearchUrl);
+      const data = await raw.json();
+      const pairs = data.pairs || [];
+      const tokens = pairs
+        .filter(p => p.chainId === 'bsc' && p.baseToken && p.baseToken.address)
+        .map(p => ({ addr: p.baseToken.address, symbol: p.baseToken.symbol, name: p.baseToken.name, liquidity: p.liquidity?.usd || 0 }));
+      let newCount = 0;
+      for (const t of tokens) {
+        const addr = t.addr.toLowerCase();
+        if (!seen.has(addr) && !FILTER_TOKENS.has(addr)) { seen.add(addr); newCount++; totalNewTokens++; }
       }
+      logLine(`  DexScreener搜索: ${tokens.length} 个, 新增 ${newCount} 个`);
 
-      const pairs = data.data.pairs;
-      cursor = pairs[pairs.length - 1].id;
-
-      // Extract unique tokens (filter stablecoins)
-      const tokens = new Set();
-      pairs.forEach(pair => {
-        if (pair.token0 && !FILTER_TOKENS.has(pair.token0.id.toLowerCase())) tokens.add(pair.token0.id);
-        if (pair.token1 && !FILTER_TOKENS.has(pair.token1.id.toLowerCase())) tokens.add(pair.token1.id);
-      });
-
-      const newTokens = [...tokens].filter(t => !seen.has(t.toLowerCase()));
-      newTokens.forEach(t => seen.add(t.toLowerCase()));
-      totalNewTokens += newTokens.length;
-
-      const avgReserve = pairs.reduce((s, p) => s + parseFloat(p.reserveUSD || 0), 0) / pairs.length;
-      logLine(`  PCS p${pageNum}: ${pairs.length}对 → ${tokens.size}代币 → 新增${newTokens.length}个 | 平均LP: $${avgReserve.toFixed(0)}`);
-
-      // Batch scan
-      for (const addr of newTokens) {
+      // Scan low-liquidity ones (more likely old/abandoned)
+      const toScan = tokens.filter(t => !FILTER_TOKENS.has(t.addr.toLowerCase())).sort((a, b) => a.liquidity - b.liquidity);
+      for (const t of toScan) {
         if (archAbort) break;
         totalProcessed++;
         archStats.scanned++;
-        document.getElementById('archStatus').textContent = `[PCS p${pageNum}] ${archStats.scanned}扫/${archStats.drain}掏 | ${addr.slice(0,10)}...`;
+        document.getElementById('archStatus').textContent = `[DexScr] ${t.addr.slice(0,12)}... (${totalProcessed}) ${t.symbol || ''}`;
         document.getElementById('archProg').style.width = Math.min(98, (totalProcessed / Math.max(totalEstimate, 1) * 100)) + '%';
-        await scanArchTarget(addr, checkLPFlag, ownerOnly, useGoPlus, logLine);
+        await scanArchTarget(t.addr, checkLPFlag, ownerOnly, useGoPlus, logLine);
         updateArchStats();
-        if (archStats.drain > 0 && archStats.drain % 10 === 0) renderArchTopTargets();
         await sleep(delay);
       }
-    } catch (e) {
-      logLine(`⚠ PCS第${pageNum}页错误: ${e.message}, 跳过`, 'warn');
+    } catch (e) { logLine(`  ⚠ DexScreener搜索错误: ${e.message}`, 'warn'); }
+  }
+
+  // Phase 3b: BSCScan token holder list — top tokens by holders
+  if (!archAbort) {
+    const bscApiKey = document.getElementById('bscKey').value.trim();
+    if (bscApiKey && bscApiKey.length > 10) {
+      logLine('📡 BSCScan: 拉取代币列表...');
+      try {
+        for (let bscPage = 1; bscPage <= Math.min(pages, 5); bscPage++) {
+          if (archAbort) break;
+          const bscUrl = `${BSC_API}?module=stats&action=tokensupply&apikey=${bscApiKey}&page=${bscPage}&offset=100`;
+          const bscResp = await fetch(bscUrl);
+          const bscData = await bscResp.json();
+          if (bscData.status === '1' && bscData.result) {
+            const bscTokens = bscData.result.map(r => r.contractAddress).filter(Boolean);
+            let bscNew = 0;
+            for (const bscAddr of bscTokens) {
+              const addr = bscAddr.toLowerCase();
+              if (!seen.has(addr) && !FILTER_TOKENS.has(addr)) { seen.add(addr); bscNew++; totalNewTokens++; }
+            }
+            logLine(`  BSCScan p${bscPage}: ${bscTokens.length}个, 新增${bscNew}个`);
+          }
+          await sleep(500);
+        }
+      } catch (e) { logLine(`  ⚠ BSCScan列表错误: ${e.message}`, 'warn'); }
+    } else {
+      logLine('  ⚠ 无BSCScan API Key, 跳过BSCScan列表拉取 (可免费在bscscan.com/myapikey获取)');
     }
+  }
+
+  // Phase 3c: PCS Subgraph — simplified query without complex filters
+  if (!archAbort) {
+    logLine('📡 PCS子图: 尝试拉取老池子...');
+    try {
+      // Simple first query — no cursor on first page, just grab oldest pairs by ID
+      const pcsQuery = `{ pairs(first: 1000, orderBy: id, orderDirection: asc) { id token0 { id } token1 { id } reserveUSD } }`;
+      const pcsResp = await fetch(PCS_SUBGRAPH, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: pcsQuery })
+      });
+      const pcsData = await pcsResp.json();
+      if (pcsData.data && pcsData.data.pairs && pcsData.data.pairs.length > 0) {
+        const pcsPairs = pcsData.data.pairs;
+        const pcsTokens = [];
+        pcsPairs.forEach(p => {
+          if (p.token0 && p.token0.id) pcsTokens.push(p.token0.id);
+          if (p.token1 && p.token1.id) pcsTokens.push(p.token1.id);
+        });
+        const uniquePcs = [...new Set(pcsTokens.map(t => t.toLowerCase()))].filter(t => !FILTER_TOKENS.has(t));
+        let pcsNew = 0;
+        for (const addr of uniquePcs) {
+          if (!seen.has(addr)) { seen.add(addr); pcsNew++; totalNewTokens++; }
+        }
+        logLine(`  PCS子图: ${pcsPairs.length}对 → ${uniquePcs.length}独立代币 → 新增${pcsNew}个`);
+
+        // Only scan the low-reserve pairs (potentially abandoned)
+        const scanTokens = uniquePcs.filter(t => !FILTER_TOKENS.has(t));
+        for (const addr of scanTokens.slice(0, 500)) {
+          if (archAbort) break;
+          totalProcessed++;
+          archStats.scanned++;
+          document.getElementById('archStatus').textContent = `[PCS] ${addr.slice(0,12)}... (${totalProcessed})`;
+          document.getElementById('archProg').style.width = Math.min(98, (totalProcessed / Math.max(totalEstimate, 1) * 100)) + '%';
+          await scanArchTarget(addr, checkLPFlag, ownerOnly, useGoPlus, logLine);
+          updateArchStats();
+          if (archStats.drain > 0 && archStats.drain % 10 === 0) renderArchTopTargets();
+          await sleep(delay);
+        }
+      } else {
+        logLine('  ⚠ PCS子图返回空或无数据', 'warn');
+      }
+    } catch (e) { logLine(`  ⚠ PCS子图错误: ${e.message}`, 'warn'); }
   }
 
   // Done
