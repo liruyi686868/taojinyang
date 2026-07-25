@@ -985,11 +985,10 @@ async function startArch() {
           }
         } catch (e) { logLine(`  ⚠ BSCScan p${page}错误: ${e.message}`, 'warn'); }
       }
-    } else {
-      logLine('  ℹ 无BSCScan API Key — 跳过在线数据源');
-      logLine('  💡 免费获取: bscscan.com/myapikey → 粘贴到输入框');
-    }
-  }
+  // Fallback: all external APIs dead. We scan seeds only but do a thorough job.
+  // Let user know and continue.
+  logLine('ℹ BSCScan V1已完全弃用且V2从国内无法访问。当前仅扫描种子地址库。');
+  logLine('ℹ 如需更多数据源，需要部署后端代理或使用VPN访问Etherscan V2 API。');
 
   // Done
   document.getElementById('archProg').style.width = '100%';
