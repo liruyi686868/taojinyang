@@ -914,7 +914,7 @@ async function startArch() {
   const seen = new Set([...archSeen]);
   FILTER_TOKENS.forEach(t => seen.add(t));
 
-  logLine('⛏️ 考古挖掘开始! v5.3 PCS列表版');
+  logLine('⛏️ 考古挖掘开始! v5.5 PCS列表版');
   logLine('📡 数据源: 64种子 + PCS官方代币列表(400+ BSC代币)');
   logLine(`⚙️ 设置: ownerOnly=${ownerOnly} checkLP=${checkLPFlag} goPlus=${useGoPlus} delay=${delay}ms`);
 
@@ -1303,7 +1303,7 @@ async function init() {
   // Enter key
   document.getElementById('scanInput').addEventListener('keydown', e => { if (e.key === 'Enter') deepScan(); });
 
-  toast('💀 掏土狗 v5.3 就绪 | BSCScan日志考古 + 深度扫描', 'ok');
+  toast('💀 掏土狗 v5.5 就绪 | PCS列表考古 + 深度扫描', 'ok');
 }
 init();
 </script>
