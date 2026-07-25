@@ -377,6 +377,22 @@ const GP_API = 'https://api.gopluslabs.io/api/v1/token_security/56';
 const PCS_TOKEN_LIST_URL = 'https://raw.githubusercontent.com/pancakeswap/token-list/main/lists/pancakeswap-extended.json';
 const BNB_PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd';
 
+// ==================== ETHERS INIT ====================
+// ethers v6 JsonRpcProvider may have issues with some public RPC nodes.
+// We initialize it lazily with the first working URL.
+function initProvider() {
+  if (provider) return provider;
+  for (const url of RPC_URLS) {
+    try {
+      const p = new ethers.JsonRpcProvider(url);
+      provider = p;
+      return p;
+    } catch (e) { continue; }
+  }
+  provider = new ethers.JsonRpcProvider(RPC_URLS[0]);
+  return provider;
+}
+
 // Stablecoins/common tokens to filter out
 const FILTER_TOKENS = new Set([
   WBNB.toLowerCase(),
@@ -575,12 +591,13 @@ function min(a, b) { return a < b ? a : b; }
 
 // ==================== RPC ====================
 function getProvider() {
-  if (!provider) provider = new ethers.JsonRpcProvider(RPC_URLS[rpcIndex]);
+  if (!provider) initProvider();
   return provider;
 }
 function switchRpc() {
   rpcIndex = (rpcIndex + 1) % RPC_URLS.length;
-  provider = new ethers.JsonRpcProvider(RPC_URLS[rpcIndex]);
+  try { provider = new ethers.JsonRpcProvider(RPC_URLS[rpcIndex]); }
+  catch (e) { provider = null; initProvider(); }
   document.getElementById('rpcDot').className = 'dot dot-warn';
   document.getElementById('rpcLabel').textContent = '切换RPC';
 }
