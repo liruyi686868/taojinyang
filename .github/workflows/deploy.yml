@@ -9,7 +9,7 @@ permissions:
   id-token: write
 concurrency:
   group: pages
-  cancel-in-progresss: false
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
