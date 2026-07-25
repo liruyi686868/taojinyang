@@ -615,8 +615,26 @@ async function eth_call(to, data, from, timeout) {
 }
 
 async function eth_getCode(addr) {
-  try { return await rpcCall('eth_getCode', [addr, 'latest'], 10000); }
-  catch (e) { return '0x'; }
+  // Try all RPC URLs for getCode since some nodes don't support it properly
+  const urls = RPC_URLS;
+  for (let i = 0; i < urls.length; i++) {
+    try {
+      const resp = await fetch(urls[i], {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_getCode', params: [addr, 'latest'], id: 1 })
+      });
+      const data = await resp.json();
+      if (data.result && data.result !== '0x' && data.result.length > 4) {
+        if (!document.getElementById('rpcDot').className.includes('dot-on')) {
+          document.getElementById('rpcDot').className = 'dot dot-on';
+          document.getElementById('rpcLabel').textContent = 'RPC就绪';
+        }
+        return data.result;
+      }
+      if (data.result === '0x' || (data.result && data.result.length <= 4)) return data.result;
+    } catch (e) { continue; }
+  }
+  return '0x';
 }
 
 // ==================== BNB PRICE ====================
