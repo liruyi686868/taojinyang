@@ -1285,7 +1285,11 @@ async function init() {
   if (verifiedTargets.length > 0) renderTargets();
 
   // RPC check
-  try { await rpcCall('eth_chainId', [], 4000); }
+  try {
+    await rpcCall('eth_chainId', [], 8000);
+    document.getElementById('rpcDot').className = 'dot dot-on';
+    document.getElementById('rpcLabel').textContent = 'RPC就绪';
+  }
   catch (e) { document.getElementById('rpcDot').className = 'dot dot-off'; document.getElementById('rpcLabel').textContent = 'RPC离线'; }
 
   // BNB price
