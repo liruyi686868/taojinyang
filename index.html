@@ -931,94 +931,60 @@ async function startArch() {
     await sleep(delay);
   }
 
-  // === Phase 2: BSCScan token list (if API key provided) ===
-  // Skip DexScreener — their API is blocked/times out from China/APAC region.
-  // BSCScan token supply endpoint returns all BEP-20 contracts sorted by holders.
+  // === Phase 2: PancakeSwap factory events via BSCScan logs (free, with API key) ===
+  // BSCScan V1 API is deprecated — logs endpoint works with API key but requires V2 migration.
+  // We use `getLogs` on PCS factory PairCreated events to discover ALL tokens ever paired on PCS.
+  // This is the most complete data source — every token that ever had a pool on PCS.
   if (!archAbort) {
-    const bscApiKey = document.getElementById('bscKey').value.trim();
-    if (bscApiKey && bscApiKey.length > 10) {
-      logLine('📡 BSCScan: 分页拉取代币列表 (按持有者排序)...');
-      for (let bscPage = 1; bscPage <= pages; bscPage++) {
+    const apiKey = document.getElementById('bscKey').value.trim();
+    if (apiKey && apiKey.length > 10) {
+      logLine('📡 PCS PairCreated: 从BSCScan日志拉取所有历史交易对 (替代已关停的PCS子图)...');
+      const PAIR_TOPIC = '0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9';
+      // BSCScan V1 logs API may return "deprecated" for some calls. Use with API key.
+      // Scan blocks in narrow chunks to avoid "result too large" errors
+      const CHUNKS = [
+        [7000000, 7500000],
+        [7500001, 8000000],
+        [8000001, 8500000],
+        [8500001, 9000000],
+        [9000001, 9500000],
+        [9500001, 10000000],
+        [10000001, 11000000],
+        [11000001, 12000000],
+        [12000001, 14000000],
+        [14000001, 16000000],
+        [16000001, 18000000],
+        [18000001, 20000000],
+        [20000001, 23000000],
+        [23000001, 26000000],
+        [26000001, 30000000],
+      ];
+
+      for (let ci = 0; ci < Math.min(CHUNKS.length, pages); ci++) {
         if (archAbort) break;
+        const [from, to] = CHUNKS[ci];
         try {
-          const bscUrl = `${BSC_API}?module=stats&action=tokensupply&apikey=${bscApiKey}&page=${bscPage}&offset=50`;
-          const bscResp = await fetch(bscUrl);
-          const bscData = await bscResp.json();
-          if (bscData.status === '1' && bscData.result && bscData.result.length > 0) {
-            const bscAddrs = bscData.result.map(r => r.contractAddress).filter(Boolean);
-            let newAddrs = [];
-            for (const addr of bscAddrs) {
-              const a = addr.toLowerCase();
-              if (!seen.has(a) && !FILTER_TOKENS.has(a)) { seen.add(a); newAddrs.push(a); totalNewTokens++; }
-            }
-            logLine(`  BSCScan p${bscPage}: ${bscAddrs.length}个合约 → 新增${newAddrs.length}个`);
-
-            for (const addr of newAddrs) {
-              if (archAbort) break;
-              totalProcessed++;
-              archStats.scanned++;
-              document.getElementById('archStatus').textContent = `[BSCScan p${bscPage}] ${addr.slice(0,12)}... (${totalProcessed})`;
-              document.getElementById('archProg').style.width = Math.min(98, (totalProcessed / Math.max(totalEstimate, 1) * 100)) + '%';
-              await scanArchTarget(addr, checkLPFlag, ownerOnly, useGoPlus, logLine);
-              updateArchStats();
-              if (archStats.drain > 0 && archStats.drain % 10 === 0) renderArchTopTargets();
-              await sleep(delay);
-            }
-          } else {
-            logLine(`  BSCScan p${bscPage}: 无数据, 翻到底了`, 'warn');
-            break;
-          }
-        } catch (e) { logLine(`  ⚠ BSCScan p${bscPage}错误: ${e.message}`, 'warn'); }
-      }
-    } else {
-      logLine('  ℹ 无BSCScan API Key — 跳过BSCScan列表拉取');
-      logLine('  💡 免费获取: https://bscscan.com/myapikey — 填到上面输入框即可拉取大量老合约');
-    }
-  }
-
-  // === Phase 3: PancakeSwap factory events via BSCScan logs (free, no subgraph) ===
-  // We pull PairCreated events from BSCScan's event log API.
-  // This replaces the dead PCS subgraph — same data, different source.
-  if (!archAbort) {
-    const bscApiKey2 = document.getElementById('bscKey').value.trim();
-    if (bscApiKey2 && bscApiKey2.length > 10) {
-      logLine('📡 PCS工厂日志: 从BSCScan拉取PairCreated事件 (2021→2022)...');
-      const PAIR_CREATED_TOPIC = '0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9';
-      // Scan from block 7M (PCS launch Apr 2021) to 22M (~2023) in chunks
-      const startBlock = 7000000;
-      const blockChunkSize = 2000000;
-      const maxChunks = Math.min(pages, 10);
-
-      for (let chunk = 0; chunk < maxChunks; chunk++) {
-        if (archAbort) break;
-        const fromBlock = startBlock + chunk * blockChunkSize;
-        const toBlock = fromBlock + blockChunkSize - 1;
-        try {
-          const logUrl = `${BSC_API}?module=logs&action=getLogs&fromBlock=${fromBlock}&toBlock=${toBlock}&address=${FACTORY}&topic0=${PAIR_CREATED_TOPIC}&apikey=${bscApiKey2}`;
-          const logResp = await fetch(logUrl);
-          const logData = await logResp.json();
-
-          if (logData.status === '1' && logData.result && logData.result.length > 0) {
-            const pairTokens = [];
-            logData.result.forEach(log => {
-              // PairCreated event: topic1 = token0, topic2 = token1
+          const url = `${BSC_API}?module=logs&action=getLogs&fromBlock=${from}&toBlock=${to}&address=${FACTORY}&topic0=${PAIR_TOPIC}&apikey=${apiKey}`;
+          const resp = await fetch(url);
+          const data = await resp.json();
+          if (data.status === '1' && data.result && data.result.length > 0) {
+            const tokens = [];
+            data.result.forEach(log => {
               const t0 = '0x' + (log.topics[1] || '').slice(-40);
               const t1 = '0x' + (log.topics[2] || '').slice(-40);
-              if (t0 && t0 !== ZERO) pairTokens.push(t0);
-              if (t1 && t1 !== ZERO) pairTokens.push(t1);
+              if (t0.length === 42 && t0 !== ZERO) tokens.push(t0);
+              if (t1.length === 42 && t1 !== ZERO) tokens.push(t1);
             });
-            const unique = [...new Set(pairTokens.map(t => t.toLowerCase()))].filter(t => !FILTER_TOKENS.has(t));
-            let newCount = 0;
-            for (const addr of unique) {
-              if (!seen.has(addr)) { seen.add(addr); newCount++; totalNewTokens++; }
-            }
-            logLine(`  PCS日志 chunk${chunk} (blk ${fromBlock}-${toBlock}): ${logData.result.length}事件 → ${unique.length}代币 → 新${newCount}个`);
+            const unique = [...new Set(tokens.map(t => t.toLowerCase()))].filter(t => !FILTER_TOKENS.has(t));
+            let fresh = 0;
+            for (const a of unique) { if (!seen.has(a)) { seen.add(a); fresh++; totalNewTokens++; } }
+            logLine(`  📜 blk ${from}-${to}: ${data.result.length}事件 → ${unique.length}代币 → 新增${fresh}个`);
 
             for (const addr of unique) {
               if (archAbort) break;
               totalProcessed++;
               archStats.scanned++;
-              document.getElementById('archStatus').textContent = `[PCS日志] ${addr.slice(0,12)}... (${totalProcessed})`;
+              document.getElementById('archStatus').textContent = `[PCS Pair] ${addr.slice(0,12)}... (${totalProcessed})`;
               document.getElementById('archProg').style.width = Math.min(98, (totalProcessed / Math.max(totalEstimate, 1) * 100)) + '%';
               await scanArchTarget(addr, checkLPFlag, ownerOnly, useGoPlus, logLine);
               updateArchStats();
@@ -1026,12 +992,13 @@ async function startArch() {
               await sleep(delay);
             }
           } else {
-            logLine(`  PCS日志 chunk${chunk}: 无PairCreated事件`, 'warn');
+            logLine(`  ⚠ blk ${from}-${to}: ${data.message || '无数据'}`, 'warn');
           }
-        } catch (e) { logLine(`  ⚠ PCS日志 chunk${chunk}错误: ${e.message}`, 'warn'); }
+        } catch (e) { logLine(`  ⚠ blk ${from}-${to}错误: ${e.message}`, 'warn'); }
       }
     } else {
-      logLine('  ℹ 无BSCScan API Key — 跳过PCS工厂日志');
+      logLine('  ℹ 无BSCScan API Key — 跳过PCS PairCreated日志');
+      logLine('  💡 免费获取: bscscan.com/myapikey → 粘贴到输入框 → 可直接拉取10000+老合约');
     }
   }
 
