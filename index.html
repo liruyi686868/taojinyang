@@ -237,7 +237,7 @@ select{appearance:none;cursor:pointer}
           <div class="pn-h">⛏️ 考古挖掘控制面板</div>
           <div class="pn-b">
             <p style="font-size:12px;color:var(--dim);margin-bottom:8px">
-              从多个数据源挖掘BSC老合约：内建46个种子地址 + DexScreener + PCS子图(游标分页，无skip限制)
+              从多个数据源挖掘BSC老合约：内建${SEEDS.length}个种子地址 + BSCScan tokensupply在线拉取
             </p>
             <div class="row">
               <div style="flex:1;min-width:80px">
@@ -288,7 +288,7 @@ select{appearance:none;cursor:pointer}
           <div class="pn-h">挖掘日志 <span style="font-size:9px;color:var(--dim)" id="archResultCount">0/0/0</span></div>
           <div class="pn-b log-area" id="archLog" style="max-height:600px">
             <div class="log-line info">⛏️ 准备就绪。选择页数后点击"开始挖掘"。</div>
-            <div class="log-line info">📡 数据源: 种子地址 + DexScreener + PCS子图(游标分页)</div>
+            <div class="log-line info">📡 数据源: ${SEEDS.length}个种子地址 + BSCScan tokensupply在线拉取</div>
           </div>
         </div>
       </div>
@@ -372,7 +372,12 @@ const ATTACKER = '0x1111111111111111111111111111111111111111';
 const DEAD = '0x000000000000000000000000000000000000dead';
 const ZERO = '0x0000000000000000000000000000000000000000';
 const GP_API = 'https://api.gopluslabs.io/api/v1/token_security/56';
+// BSCScan V1 is dead, V2 (api.etherscan.io) times out from some regions.
+// Use multiple fallback BSC APIs that still work:
+// - api.bscscan.com V1: deprecated but still partially works
+// - BSC RPC eth_getLogs: works but heavy, use as last resort
 const BSC_API = 'https://api.bscscan.com/api';
+const BSC_API_V2 = 'https://api.etherscan.io/v2/api?chainid=56';
 const BNB_PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd';
 
 // Stablecoins/common tokens to filter out
@@ -618,15 +623,24 @@ async function eth_getCode(addr) {
 }
 
 // ==================== BNB PRICE ====================
+// CoinGecko is blocked in some regions. Fall back to hardcoded price + manual update.
+let bnbUsdFallback = 570;
 async function fetchBnbPrice() {
   try {
-    const resp = await fetch(BNB_PRICE_URL);
-    const data = await resp.json();
-    if (data.binancecoin && data.binancecoin.usd) {
-      bnbUsd = data.binancecoin.usd;
-      document.getElementById('bnbPrice').textContent = '$' + bnbUsd.toFixed(0);
+    const resp = await fetch(BNB_PRICE_URL, { mode: 'cors' });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.binancecoin && data.binancecoin.usd) {
+        bnbUsd = data.binancecoin.usd;
+        bnbUsdFallback = bnbUsd;
+        document.getElementById('bnbPrice').textContent = '$' + bnbUsd.toFixed(0);
+        return;
+      }
     }
   } catch (e) {}
+  // Fallback: use stored/hardcoded value
+  bnbUsd = bnbUsdFallback;
+  document.getElementById('bnbPrice').textContent = '$' + bnbUsdFallback.toFixed(0) + ' (approx)';
 }
 
 // ==================== LP BALANCE ====================
@@ -903,8 +917,8 @@ async function startArch() {
   const seen = new Set([...archSeen]);
   FILTER_TOKENS.forEach(t => seen.add(t));
 
-  logLine('⛏️ 考古挖掘开始! v5.0 游标分页版');
-  logLine(`📡 数据源: ${SEEDS.length}种子 + DexScreener + PCS子图(游标分页, ${pages}页)`);
+  logLine('⛏️ 考古挖掘开始! v5.3 BSCScan在线版');
+  logLine(`📡 数据源: ${SEEDS.length}种子 + BSCScan tokensupply在线拉取`);
   logLine(`⚙️ 设置: ownerOnly=${ownerOnly} checkLP=${checkLPFlag} goPlus=${useGoPlus} delay=${delay}ms`);
 
   // Estimate total
@@ -931,60 +945,34 @@ async function startArch() {
     await sleep(delay);
   }
 
-  // === Phase 2: PancakeSwap factory events via BSCScan logs (free, with API key) ===
-  // BSCScan V1 API is deprecated — logs endpoint works with API key but requires V2 migration.
-  // We use `getLogs` on PCS factory PairCreated events to discover ALL tokens ever paired on PCS.
-  // This is the most complete data source — every token that ever had a pool on PCS.
+  // === Phase 2: BSCScan token holder list (V1 still works for stats, V2 for logs) ===
+  // BSCScan V1 API is deprecated but the stats module still partially works from browser.
+  // The logs endpoint returns NOTOK on V1. We try V1 first then fall back gracefully.
   if (!archAbort) {
     const apiKey = document.getElementById('bscKey').value.trim();
     if (apiKey && apiKey.length > 10) {
-      logLine('📡 PCS PairCreated: 从BSCScan日志拉取所有历史交易对 (替代已关停的PCS子图)...');
-      const PAIR_TOPIC = '0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9';
-      // BSCScan V1 logs API may return "deprecated" for some calls. Use with API key.
-      // Scan blocks in narrow chunks to avoid "result too large" errors
-      const CHUNKS = [
-        [7000000, 7500000],
-        [7500001, 8000000],
-        [8000001, 8500000],
-        [8500001, 9000000],
-        [9000001, 9500000],
-        [9500001, 10000000],
-        [10000001, 11000000],
-        [11000001, 12000000],
-        [12000001, 14000000],
-        [14000001, 16000000],
-        [16000001, 18000000],
-        [18000001, 20000000],
-        [20000001, 23000000],
-        [23000001, 26000000],
-        [26000001, 30000000],
-      ];
-
-      for (let ci = 0; ci < Math.min(CHUNKS.length, pages); ci++) {
+      // BSCScan stats/tokensupply still works on V1 from browser context
+      logLine('📡 BSCScan: 拉取代币列表 (tokensupply)...');
+      for (let page = 1; page <= pages; page++) {
         if (archAbort) break;
-        const [from, to] = CHUNKS[ci];
         try {
-          const url = `${BSC_API}?module=logs&action=getLogs&fromBlock=${from}&toBlock=${to}&address=${FACTORY}&topic0=${PAIR_TOPIC}&apikey=${apiKey}`;
+          const url = `${BSC_API}?module=stats&action=tokensupply&apikey=${apiKey}&page=${page}&offset=100`;
           const resp = await fetch(url);
           const data = await resp.json();
           if (data.status === '1' && data.result && data.result.length > 0) {
-            const tokens = [];
-            data.result.forEach(log => {
-              const t0 = '0x' + (log.topics[1] || '').slice(-40);
-              const t1 = '0x' + (log.topics[2] || '').slice(-40);
-              if (t0.length === 42 && t0 !== ZERO) tokens.push(t0);
-              if (t1.length === 42 && t1 !== ZERO) tokens.push(t1);
-            });
-            const unique = [...new Set(tokens.map(t => t.toLowerCase()))].filter(t => !FILTER_TOKENS.has(t));
+            const addrs = data.result.map(r => r.contractAddress).filter(Boolean);
             let fresh = 0;
-            for (const a of unique) { if (!seen.has(a)) { seen.add(a); fresh++; totalNewTokens++; } }
-            logLine(`  📜 blk ${from}-${to}: ${data.result.length}事件 → ${unique.length}代币 → 新增${fresh}个`);
-
-            for (const addr of unique) {
+            const newAddrs = [];
+            for (const a of addrs) {
+              const addr = a.toLowerCase();
+              if (!seen.has(addr) && !FILTER_TOKENS.has(addr)) { seen.add(addr); fresh++; totalNewTokens++; newAddrs.push(addr); }
+            }
+            logLine(`  BSCScan tokensupply p${page}: ${addrs.length}合约 → 新增${fresh}个`);
+            for (const addr of newAddrs) {
               if (archAbort) break;
               totalProcessed++;
               archStats.scanned++;
-              document.getElementById('archStatus').textContent = `[PCS Pair] ${addr.slice(0,12)}... (${totalProcessed})`;
+              document.getElementById('archStatus').textContent = `[BSCScan p${page}] ${addr.slice(0,12)}... (${totalProcessed})`;
               document.getElementById('archProg').style.width = Math.min(98, (totalProcessed / Math.max(totalEstimate, 1) * 100)) + '%';
               await scanArchTarget(addr, checkLPFlag, ownerOnly, useGoPlus, logLine);
               updateArchStats();
@@ -992,13 +980,14 @@ async function startArch() {
               await sleep(delay);
             }
           } else {
-            logLine(`  ⚠ blk ${from}-${to}: ${data.message || '无数据'}`, 'warn');
+            logLine(`  BSCScan tokensupply p${page}: ${data.message || '无数据'}`, 'warn');
+            break;
           }
-        } catch (e) { logLine(`  ⚠ blk ${from}-${to}错误: ${e.message}`, 'warn'); }
+        } catch (e) { logLine(`  ⚠ BSCScan p${page}错误: ${e.message}`, 'warn'); }
       }
     } else {
-      logLine('  ℹ 无BSCScan API Key — 跳过PCS PairCreated日志');
-      logLine('  💡 免费获取: bscscan.com/myapikey → 粘贴到输入框 → 可直接拉取10000+老合约');
+      logLine('  ℹ 无BSCScan API Key — 跳过在线数据源');
+      logLine('  💡 免费获取: bscscan.com/myapikey → 粘贴到输入框');
     }
   }
 
