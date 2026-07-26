@@ -643,7 +643,7 @@ async function eth_getCode(addr) {
 // ==================== NATIVE PRICE ====================
 async function fetchPrice() {
   try {
-    const resp = await fetch(chain().priceApi, { mode:'cors' });
+    const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+chain().priceKey+'&vs_currencies=usd');
     if (resp.ok) {
       const data = await resp.json();
       const key = chain().priceKey;
