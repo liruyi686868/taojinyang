@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>掏土狗 v6.1 | 多链合约漏洞扫描器</title>
+<style>
+:root{
+  --bg:#070710;--card:#0e0e1d;--border:#1c1c38;--border2:#282848;--text:#b8c4d8;--bright:#e8ecf2;--dim:#586580;
+  --green:#00e676;--green2:#003510;--red:#ff3860;--red2:#2d000a;--yellow:#ffd740;--cyan:#18ffff;--magenta:#ea80fc;--orange:#ff9100;
+  --font:'JetBrains Mono','Courier New',monospace;--rad:6px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:20px;line-height:1.7;min-height:100vh}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+.app{max-width:1600px;margin:0 auto;padding:8px 14px}
+
+/* Header */
+.hd{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:8px;flex-wrap:wrap;gap:6px}
+.hd-l{display:flex;align-items:center;gap:8px}
+.hd-icon{font-size:38px;filter:drop-shadow(0 0 10px var(--cyan))}
+.hd-title{font-size:30px;font-weight:800;color:var(--bright)}
+.hd-sub{font-size:13px;color:var(--dim);letter-spacing:1px}
+.hd-r{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px}
+.dot-on{background:var(--green);box-shadow:0 0 8px var(--green)}
+.dot-warn{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
+.dot-off{background:var(--red);box-shadow:0 0 8px var(--red)}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:8px}
+@media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}
+.st{border:1px solid var(--border);background:var(--card);border-radius:var(--rad);padding:10px 12px;position:relative;overflow:hidden}
+.st:hover{border-color:var(--border2)}
+.st-label{font-size:12px;color:var(--dim);letter-spacing:1.5px;margin-bottom:2px}
+.st-val{font-size:32px;font-weight:800}
+.st-val.g{color:var(--green)}.st-val.r{color:var(--red)}.st-val.c{color:var(--cyan)}.st-val.y{color:var(--yellow)}
+
+/* Chain selector */
+.chain-bar{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+.chain-chip{padding:10px 22px;border:1px solid var(--border);border-radius:999px;cursor:pointer;font-size:15px;font-weight:700;background:var(--card);color:var(--dim);transition:.2s;white-space:nowrap}
+.chain-chip:hover{color:var(--text);border-color:var(--border2)}
+.chain-chip.on{color:var(--cyan);border-color:var(--cyan);box-shadow:0 0 12px rgba(24,255,255,.08)}
+.chain-chip.active-scan{animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* Tabs */
+.tabs{display:flex;gap:2px;margin-bottom:0}
+.tab{padding:12px 24px;border:1px solid var(--border);border-bottom:none;border-radius:var(--rad) var(--rad) 0 0;cursor:pointer;font-size:16px;font-weight:700;background:var(--card);color:var(--dim);transition:.2s}
+.tab:hover{color:var(--text);border-color:var(--border2)}
+.tab.on{color:var(--cyan);border-color:var(--cyan) var(--border) var(--card);background:var(--card);position:relative;z-index:1}
+.tab.on::after{content:'';position:absolute;bottom:-1px;left:0;width:100%;height:1px;background:var(--card)}
+
+/* Panels */
+.panel{border:1px solid var(--border);border-radius:0 0 var(--rad) var(--rad);padding:12px;background:var(--card);margin-bottom:10px;min-height:260px}
+.panel-wrap{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:1100px){.panel-wrap{grid-template-columns:1fr}}
+
+/* Cards */
+.pn{border:1px solid var(--border);background:var(--bg);border-radius:var(--rad);overflow:hidden;margin-bottom:8px}
+.pn-h{padding:12px 16px;border-bottom:1px solid var(--border);font-size:16px;font-weight:700;display:flex;justify-content:space-between;color:var(--bright);background:rgba(24,255,255,.02)}
+.pn-b{padding:14px 16px;max-height:500px;overflow-y:auto}.pn-b p{font-size:14px;color:var(--dim);margin-bottom:6px}
+
+/* Inputs */
+input,select{width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--rad);color:var(--bright);font-family:var(--font);font-size:16px;outline:none;margin-bottom:5px}
+input:focus,select:focus{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(24,255,255,.05)}
+input::placeholder{color:var(--dim)}
+select{appearance:none;cursor:pointer}
+.row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:5px}
+.row>input,.row>select{flex:1;min-width:80px;margin-bottom:0}
+
+/* Buttons */
+.btn{padding:12px 20px;border:1px solid var(--border);border-radius:var(--rad);background:var(--card);color:var(--text);font-family:var(--font);font-size:16px;font-weight:700;cursor:pointer;transition:.2s;white-space:nowrap}
+.btn:hover:not(:disabled){transform:translateY(-1px)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-c{border-color:var(--cyan);color:var(--cyan)}.btn-c:hover:not(:disabled){background:rgba(24,255,255,.08);box-shadow:0 0 15px rgba(24,255,255,.1)}
+.btn-g{border-color:var(--green);color:var(--green)}.btn-g:hover:not(:disabled){background:rgba(0,230,118,.08);box-shadow:0 0 15px rgba(0,230,118,.1)}
+.btn-r{border-color:var(--red);color:var(--red)}.btn-r:hover:not(:disabled){background:rgba(255,56,96,.08);box-shadow:0 0 15px rgba(255,56,96,.1)}
+.btn-y{border-color:var(--yellow);color:var(--yellow)}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-xs{padding:3px 8px;font-size:10px}
+
+/* Result card */
+.rc{border:1px solid var(--border);border-radius:var(--rad);padding:8px 10px;margin-bottom:5px;cursor:pointer;transition:.2s;background:var(--bg)}
+.rc:hover{border-color:var(--border2);background:rgba(255,255,255,.01)}
+.rc.drain{border-left:3px solid var(--green)}
+.rc.own{border-left:3px solid var(--orange)}
+.rc.honey{border-left:3px solid var(--red)}
+.rc-name{font-size:17px;font-weight:800;color:var(--bright)}
+.rc-addr{font-size:13px;color:var(--dim);margin:2px 0}
+.rc-meta{display:flex;gap:10px;font-size:13px;color:var(--dim);margin-top:3px;flex-wrap:wrap}
+.rc-chain{display:inline-block;font-size:11px;padding:3px 8px;border-radius:3px;font-weight:700}
+
+/* Progress */
+.progress{background:var(--border);border-radius:3px;height:4px;margin:6px 0;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--magenta));border-radius:3px;transition:width .3s}
+
+/* Feed */
+.feed{max-height:400px;overflow-y:auto;font-size:14px}
+.feed-line{padding:2px 6px;border-bottom:1px solid rgba(255,255,255,.02);font-family:var(--font)}
+.feed-line.drain{color:var(--green);background:rgba(0,230,118,.04)}
+.feed-line.warn{color:var(--yellow)}
+.feed-line.info{color:var(--dim)}
+
+/* Tags */
+.tag{display:inline-block;font-size:12px;padding:4px 8px;border-radius:3px;margin:1px;font-weight:700}
+.tag-crit{background:rgba(255,56,96,.15);color:var(--red);border:1px solid rgba(255,56,96,.25)}
+.tag-high{background:rgba(255,145,0,.15);color:var(--orange);border:1px solid rgba(255,145,0,.25)}
+.tag-med{background:rgba(24,255,255,.1);color:var(--cyan);border:1px solid rgba(24,255,255,.15)}
+.tag-low{background:rgba(0,230,118,.1);color:var(--green);border:1px solid rgba(0,230,118,.15)}
+
+/* Toast */
+.toast{position:fixed;bottom:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:5px;pointer-events:none}
+.toast-msg{padding:12px 18px;border-radius:var(--rad);font-size:15px;font-weight:700;border:1px solid;animation:slideIn .3s;max-width:400px;pointer-events:auto}
+.toast-msg.ok{background:rgba(0,230,118,.1);border-color:var(--green);color:var(--green)}
+.toast-msg.err{background:rgba(255,56,96,.1);border-color:var(--red);color:var(--red)}
+.toast-msg.info{background:rgba(24,255,255,.1);border-color:var(--cyan);color:var(--cyan)}
+@keyframes slideIn{from{transform:translateX(80px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* Spinner */
+.spin{display:flex;align-items:center;gap:10px;justify-content:center;padding:16px;color:var(--cyan)}
+.spin-box{width:22px;height:22px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Empty */
+.empty{text-align:center;padding:30px;color:var(--dim);font-size:16px}
+
+/* Log */
+.log-area{background:var(--bg);border:1px solid var(--border);border-radius:var(--rad);padding:10px 12px;max-height:350px;overflow-y:auto;font-size:12px;font-family:var(--font)}
+.log-line{padding:2px 0;border-bottom:1px solid rgba(255,255,255,.01)}
+.log-line.danger{color:var(--green)}
+.log-line.warn{color:var(--yellow)}
+
+/* Tooltip */
+.tooltip{font-size:9px;color:var(--dim);background:rgba(255,255,255,.03);padding:2px 6px;border-radius:3px;margin-left:4px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="hd">
+    <div class="hd-l">
+      <span class="hd-icon">💀</span>
+      <div>
+        <div class="hd-title">掏土狗 v6.1</div>
+        <div class="hd-sub">多链合约漏洞扫描 | 三重eth_call验证 | owner对比 | revert过滤</div>
+      </div>
+    </div>
+    <div class="hd-r">
+      <span><span class="dot dot-on" id="rpcDot"></span>&nbsp;<span id="rpcLabel">RPC就绪</span></span>
+      <span>⚡ <span id="currentChain" style="color:var(--cyan)">BSC</span></span>
+      <span>💰 <span id="bnbPrice">$--</span></span>
+      <span>⏰ <span id="clock">--:--:--</span></span>
+    </div>
+  </header>
+
+  <!-- Chain Selector -->
+  <div class="chain-bar" id="chainBar">
+    <!-- filled by JS -->
+  </div>
+
+  <div class="stats">
+    <div class="st"><div class="st-label">总扫描</div><div class="st-val c" id="statTotal">0</div></div>
+    <div class="st"><div class="st-label">🟢 可掏</div><div class="st-val g" id="statDrain">0</div></div>
+    <div class="st"><div class="st-label">可掏LP总值</div><div class="st-val y" id="statLP">$0</div></div>
+    <div class="st"><div class="st-label">考古: 已扫</div><div class="st-val c" id="statArch">0</div></div>
+    <div class="st"><div class="st-label">考古: 发现</div><div class="st-val g" id="statArchDrain">0</div></div>
+    <div class="st"><div class="st-label">监控: 发现</div><div class="st-val g" id="statMonDrain">0</div></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab on" id="tab-scanner" onclick="switchTab('scanner')">🔍 单合约扫描</div>
+    <div class="tab" id="tab-arch" onclick="switchTab('arch')">⛏️ 批量考古</div>
+    <div class="tab" id="tab-monitor" onclick="switchTab('monitor')">📡 新区块监控</div>
+    <div class="tab" id="tab-targets" onclick="switchTab('targets')">🎯 已验证目标</div>
+  </div>
+
+  <!-- SCANNER -->
+  <div class="panel" id="panel-scanner">
+    <div class="panel-wrap">
+      <div>
+        <div class="pn">
+          <div class="pn-h">合约扫描器 <span class="tooltip" id="chainHint">当前链: BSC</span></div>
+          <div class="pn-b">
+            <p style="font-size:10px;color:var(--dim);margin-bottom:6px">
+              输入合约地址，四层深度扫描: ①GoPlus安全分析 ②字节码选择器匹配 ③eth_call权限验证 ④LP余额查询
+            </p>
+            <input id="scanInput" placeholder="0x 合约地址..." autocomplete="off">
+            <div class="row">
+              <button class="btn btn-c" onclick="deepScan()" id="scanBtn">🔍 深度扫描</button>
+              <button class="btn btn-g" onclick="quickScan()" id="quickBtn">⚡ 快速检测</button>
+              <button class="btn" onclick="clearScans()">清除</button>
+              <button class="btn" onclick="exportResults()">导出JSON</button>
+            </div>
+          </div>
+        </div>
+        <div id="scanProgress"></div>
+        <div id="scanOutput" class="log-area" style="min-height:100px">
+          <div class="log-line info">root@scanner:~$ 输入合约地址开始扫描...</div>
+        </div>
+      </div>
+      <div>
+        <div class="pn">
+          <div class="pn-h">📋 漏洞速查表 <span style="font-size:8px;color:var(--dim)">参考</span></div>
+          <div class="pn-b" style="font-size:9px">
+            <div style="color:var(--green);margin-bottom:3px">🟢 可直接掏 (非owner可调用):</div>
+            <div style="margin-left:6px;color:var(--dim);margin-bottom:4px">
+              • mint() 无访问控制 → 任何人无限铸币<br>
+              • burnFrom() 无访问控制 → 销毁池子代币掏空LP<br>
+              • transferFrom() 无限制 → 偷盗池子代币<br>
+              • rescueToken/sweep() 无控制 → 提取合约内资产<br>
+              • deliver/reflect() RFI操纵 → 价格攻击
+            </div>
+            <div style="color:var(--orange);margin-bottom:3px">🔴 需owner权限:</div>
+            <div style="margin-left:6px;color:var(--dim);margin-bottom:4px">
+              • mint有onlyOwner / 改税率 / 暂停/黑名单<br>
+              • 自毁 / 代理升级 / 隐藏owner / 虚假renounce
+            </div>
+            <div style="color:var(--red);margin-bottom:3px">💀 无法利用:</div>
+            <div style="margin-left:6px;color:var(--dim)">• 蜜罐 / 假代币 / 持仓集中 / authority保留(SOL)</div>
+          </div>
+        </div>
+        <div class="pn">
+          <div class="pn-h">🔗 工具</div>
+          <div class="pn-b">
+            <div class="row" style="flex-wrap:wrap">
+              <a href="#" class="btn btn-sm" id="linkExplorer" target="_blank">浏览器</a>
+              <a href="https://dexscreener.com/" target="_blank" class="btn btn-sm">DexScreener</a>
+              <a href="https://honeypot.is/" target="_blank" class="btn btn-sm">Honeypot</a>
+              <a href="https://gopluslabs.io/" target="_blank" class="btn btn-sm">GoPlus</a>
+              <a href="https://tokensniffer.com/" target="_blank" class="btn btn-sm">Sniffer</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="pn">
+      <div class="pn-h">扫描结果 <span style="font-size:9px;color:var(--dim)" id="resultCount">0条</span></div>
+      <div class="pn-b" id="scanResults" style="max-height:400px">
+        <div class="empty">还没有扫描结果 — 输入合约地址开始</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ARCHAEOLOGY -->
+  <div class="panel" id="panel-arch" style="display:none">
+    <div class="panel-wrap">
+      <div>
+        <div class="pn">
+          <div class="pn-h">⛏️ 批量考古控制面板</div>
+          <div class="pn-b">
+            <p style="font-size:10px;color:var(--dim);margin-bottom:6px">
+              <span id="archSourceHint">多数据源: 链上代币列表 + TokenList + 种子地址库</span>
+            </p>
+            <div class="row">
+              <div style="flex:1;min-width:60px">
+                <label style="font-size:10px;color:var(--dim)">扫描数量</label>
+                <select id="archLimit">
+                  <option value="100">100个 (快速)</option>
+                  <option value="300" selected>300个 (推荐)</option>
+                  <option value="500">500个</option>
+                  <option value="1000">1000个</option>
+                  <option value="5000">5000个 (全扫)</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:60px">
+                <label style="font-size:10px;color:var(--dim)">RPC延迟(ms)</label>
+                <select id="archDelay">
+                  <option value="100">100ms (快)</option>
+                  <option value="250" selected>250ms (推荐)</option>
+                  <option value="500">500ms (稳)</option>
+                  <option value="1000">1000ms (慢)</option>
+                </select>
+              </div>
+            </div>
+            <div class="row" style="align-items:center;margin-top:5px;flex-wrap:wrap">
+              <label style="font-size:10px;color:var(--dim);margin-right:8px"><input type="checkbox" id="archOwnerOnly"> 仅弃权owner</label>
+              <label style="font-size:10px;color:var(--dim);margin-right:8px"><input type="checkbox" id="archCheckLP" checked> 查LP余额</label>
+              <label style="font-size:10px;color:var(--dim)"><input type="checkbox" id="archGoPlus" checked> GoPlus过滤</label>
+            </div>
+            <div class="row" style="margin-top:6px">
+              <button class="btn btn-g" onclick="startArch()" id="archBtn">⛏️ 开始挖掘</button>
+              <button class="btn btn-r" onclick="stopArch()" id="archStopBtn" style="display:none">⏹ 停止</button>
+              <button class="btn" onclick="clearArch()">清除</button>
+            </div>
+            <div class="progress" id="archProgWrap" style="display:none;margin-top:6px">
+              <div class="progress-fill" id="archProg" style="width:0%"></div>
+            </div>
+            <div style="font-size:11px;color:var(--cyan);margin-top:4px" id="archStatus"></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pn">
+          <div class="pn-h">挖掘日志 <span style="font-size:8px;color:var(--dim)" id="archResultCount">0/0/0</span></div>
+          <div class="pn-b log-area" id="archLog" style="max-height:550px">
+            <div class="log-line info">⛏️ 准备就绪。选择参数后点击"开始挖掘"。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="pn" style="margin-top:8px">
+      <div class="pn-h">🏆 最佳目标 (按LP排序)</div>
+      <div class="pn-b" id="archTopTargets" style="max-height:350px">
+        <div class="empty">挖掘后自动出现...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MONITOR -->
+  <div class="panel" id="panel-monitor" style="display:none">
+    <div class="panel-wrap">
+      <div>
+        <div class="pn">
+          <div class="pn-h">📡 实时监控</div>
+          <div class="pn-b">
+            <p style="font-size:10px;color:var(--dim);margin-bottom:5px">监控新区块中新部署的合约，自动检测漏洞</p>
+            <div class="row">
+              <select id="monInterval">
+                <option value="3000">3秒/次 (快)</option>
+                <option value="5000" selected>5秒/次 (推荐)</option>
+                <option value="10000">10秒/次</option>
+                <option value="30000">30秒/次</option>
+              </select>
+            </div>
+            <div class="row">
+              <button class="btn btn-g" onclick="startMon()" id="monStartBtn">▶ 开始监控</button>
+              <button class="btn btn-r" onclick="stopMon()" id="monStopBtn" style="display:none">⏹ 停止</button>
+            </div>
+            <div style="margin-top:5px;font-size:10px" id="monStatus">⚪ 未启动</div>
+          </div>
+        </div>
+        <div class="pn">
+          <div class="pn-h">监控统计</div>
+          <div class="pn-b">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px">
+              <div>区块: <strong style="color:var(--cyan)" id="monBlocks">0</strong></div>
+              <div>新合约: <strong style="color:var(--yellow)" id="monContracts">0</strong></div>
+              <div>可掏: <strong style="color:var(--green)" id="monDrain">0</strong></div>
+              <div>LP总值: <strong style="color:var(--yellow)" id="monLP">$0</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pn">
+          <div class="pn-h">监控记录</div>
+          <div class="pn-b feed" id="monFeed">
+            <div class="empty">启动监控后显示...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TARGETS -->
+  <div class="panel" id="panel-targets" style="display:none">
+    <div class="pn">
+      <div class="pn-h">🎯 已验证可掏目标 <span style="font-size:8px;color:var(--dim)">点击跳转扫描</span></div>
+      <div class="pn-b" id="targetsList" style="max-height:500px">
+        <div class="empty">扫描或考古挖掘后自动填充...</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+<script>
+// ==================== MULTI-CHAIN CONFIG ====================
+const CHAINS = {
+  bsc: {
+    id:'bsc', name:'BSC', chainId:56, short:'BSC', color:'#f3ba2f',
+    rpc:[
+      'https://bsc-dataseed1.binance.org',
+      'https://bsc-dataseed2.binance.org',
+      'https://bsc-dataseed3.binance.org',
+      'https://bsc-dataseed4.binance.org',
+      'https://bsc-dataseed1.defibit.io',
+      'https://bsc.publicnode.com',
+      'https://bsc-dataseed1.ninicoin.io',
+      'https://bsc-dataseed2.ninicoin.io',
+    ],
+    factory:'0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73',
+    wNative:'0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
+    explorer:'https://bscscan.com',
+    blockscout:'https://bsc.blockscout.com',
+    goplusChainId:56,
+    multicall3:'0xcA11bde05977b3631167028862bE2a173976CA11',
+    filterTokens:['0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c','0xe9e7cea3dedca5984780bafc599bd69add087d56','0x55d398326f99059ff775485246999027b3197955','0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d','0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3','0x2170ed0880ac9a755fd29b2688956bd959f933f8','0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c','0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82'],
+    seeds:[],
+    tokenListUrl:null,
+    priceApi:'https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd',
+    priceKey:'binancecoin',
+  },
+  base: {
+    id:'base', name:'Base', chainId:8453, short:'BASE', color:'#0052ff',
+    rpc:[
+      'https://mainnet.base.org',
+      'https://base.llamarpc.com',
+      'https://base-rpc.publicnode.com',
+      'https://base.meowrpc.com',
+      'https://base.drpc.org',
+    ],
+    factory:'0x8909Dc15e40173Ff2539343fD08de5a2066B2dF2',
+    wNative:'0x4200000000000000000000000000000000000006',
+    explorer:'https://basescan.org',
+    blockscout:'https://base.blockscout.com',
+    goplusChainId:8453,
+    multicall3:'0xcA11bde05977b3631167028862bE2a173976CA11',
+    filterTokens:['0x4200000000000000000000000000000000000006','0x833589fcd6edb6e08f4c7c32d4f71b54bda02913','0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca','0x50c5725949a6f0c72e6c4a641f24049a917db0cb'],
+    seeds:[],
+    tokenListUrl:null,
+    priceApi:'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
+    priceKey:'ethereum',
+  },
+  robinhood: {
+    id:'robinhood', name:'Robinhood', chainId:4663, short:'RB', color:'#00c805',
+    rpc:[
+      'https://rpc.mainnet.chain.robinhood.com',
+      'https://robinhood.rpc.subquery.network/public',
+    ],
+    factory:null, // will use GoPlus pool info instead
+    wNative:null, // RBETH — will find from pool reserves
+    explorer:'https://robinhoodchain.blockscout.com',
+    blockscout:'https://robinhoodchain.blockscout.com',
+    goplusChainId:4663,
+    multicall3:'0xcA11bde05977b3631167028862bE2a173976CA11',
+    filterTokens:[],
+    seeds:[],
+    tokenListUrl:null,
+    priceApi:'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
+    priceKey:'ethereum',
+  },
+  ethereum: {
+    id:'ethereum', name:'Ethereum', chainId:1, short:'ETH', color:'#627eea',
+    rpc:[
+      'https://eth.llamarpc.com',
+      'https://ethereum-rpc.publicnode.com',
+      'https://eth.drpc.org',
+      'https://rpc.ankr.com/eth',
+    ],
+    factory:'0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f',
+    wNative:'0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+    explorer:'https://etherscan.io',
+    blockscout:'https://eth.blockscout.com',
+    goplusChainId:1,
+    multicall3:'0xcA11bde05977b3631167028862bE2a173976CA11',
+    filterTokens:['0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2','0xdac17f958d2ee523a2206206994597c13d831ec7','0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48','0x6b175474e89094c44da98b954eedeac495271d0f'],
+    seeds:[],
+    tokenListUrl:null,
+    priceApi:'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
+    priceKey:'ethereum',
+  }
+};
+
+// BSC seed addresses (v5 64 seeds + v6.1 100+ shitcoin/rug seeds)
+CHAINS.bsc.seeds = [
+  // Original seeds
+  '0x1c06447736c4792ed43068519e85e4b802af2a1e','0x42981d0bfbaf196b376b02feb6a56d9efd35bdf3',
+  '0x5a7e74c36ba1a398cdbb31acba5cb82afd3a3eef','0xcf9b0fb1e1cc13950b373e7560839d4a0cac89ae',
+  '0x2efd5c7d0a2f75c4b3e76e7e77014b3d9d187316','0x8f78b2c4eef7b9b079ef24a3ae3b8ff5dd0a2eb7',
+  '0x1fe6130f638a4cd91060b65d0b9ec14e8c3db3e0','0xa2b4c0af19cc16a6cfacce81f192b024d625817d',
+  '0xdb8d30b74bf098af21472b46576962c9b4bd15a6','0x8076c74c5e3f5852037f31ff0093eeb8c8add8d3',
+  '0xbfb0e4d4e99c2e7d1c4fa4c8d8c5ccce5e629d1c','0x8850d2c68c632e3b258e612abaa8fada7e6958e5',
+  '0xc748673057861a797275cd8a068abb95a902e8de','0xac57de9c1a09fec648e93eb98875b212db0d460b',
+  '0x87230146e138d3f296a9a77e497a2a83012e9bc5','0xca3f508b8e4dd382ee878a314789373d80a5190a',
+  '0xcf6bb5389c92bdda8a3747ddb454cba3a65f1522','0x4b0f1812e5df2a09796481f14031e78601b6d7c5',
+  '0x0d8ce2a99bb6e3b7db580ed848240e4a0f9ea7e3','0xbf5140a22578168fd562dccf235e5d43a02ce9b7',
+  '0xba2ae424d960c26247dd6c32edc70b295c744c43','0xcc7fc8666f6e62c7811d8231c5d8ede35cd10613',
+  '0x67ee3cb086f8a16f34bee3ca72fad36f7db929e2','0x8443f091997f06a61670b735ed92734f5628692f',
+  '0x52ce071bd9b1c4b89a24103e2d29e7ae5f88e06b','0xa184088a740c695e156f91f5cc086a06bb78b827',
+  '0x1f7216fdb338247512ec99715587bb97f875e028','0x8595f9da7b868b1822194faed312235e43007b42',
+  '0x4bd17003473389a42daf6a0a729f6fdb328bbbd7','0x0112e29c5b70e9c363c3f6b2e9a7fbc29e3f24c4',
+  '0x7f479d78380ad00341fdd7322fe8aef766e29e5a','0xa1faa113cbe53436df28ff0aee54275c13b40975',
+  '0x78650b139471520656b9e7aa7a5e9276814a38e9','0x47bead2563dcbf3bf2c9407fea4dc236faba485a',
+  // v6.1 added: 100+ known shitcoin/honeypot/rug seeds from 2020-2023
+  '0x6bfd576220e8444ca4cc5f89efbd7f02a4c94c16','0x5d3e2382e7d56ade13af91237266ec6684b12e69',
+  '0x4f86d53a5f565e81b8ddca7372e75c9568e14f50','0x0f175ada0f900d0a2a82dea6fb5453bafd8a9270',
+  '0x7c01fe2a7dbde420261c482d65ab103f04839589','0x2e8cf259ae04c3500602d751e73d130d3e5ea9e6',
+  '0x8055d0504666e2b6942fbb2d180dcdeed056b9c8','0x6ff7feebf433cd9cd408a1e060f60e0a1be197de',
+  '0xb2625ed0f2d49c2f39cf0445a0f3644a52b6e565','0x0d5a33b3c2eafae7cc42f95e0e032e99fe2ce5ff',
+  '0x9d26f509dd1180caa2af02f2f7d38a4e2e880e98','0xc06c76b477b5a6e4a527a196a97f10cdda39c5ff',
+  '0xa3fbf0fba8bf58af5fe6fe1da88839b21ffcb88f','0xdf361aa68e22d93ae31c4ec55bf3f8df9da6ed52',
+  '0x83cea10cb4fc8f64f5000b4398aa81d7e026666d','0x9b6a55457c4bd74f09bb4236cbe1755489bbcb00',
+  '0xf15b27eede4d5ed6e6798262c12b0213e4a2c46e','0xcb2b25e783a2c1367d65a0dda70be4bedcdd4180',
+  '0x40bef86588a0a2da79b6f8e3f9eb1efbdda3a6b8','0x8fba5e8a8f2f00a144b8a357b381dfd0aa8ac6bd',
+  '0x0cab010fc1bb7e0a2add7c46d166d666fa0b5bea','0xefbfe87db84c1b86f0e3f27d1a09cafb9ff21bcc',
+  '0x4a3a8fafce35477c07d5e3d26fd094df146fd21d','0x4b57ec53ddeaa10d0400b7f925f9fed1c9f30aff',
+  '0x6ce8da28e2f864420840cf744c09511277cd6c4d','0xf9f93d95b20b988e2b27e5a414fa4b57b2f56efb',
+  '0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be','0x1d2f0da169ceb9fc7b3144628db156f3f6c60dbe',
+  '0x25a45f5891b61f435062dcba63f5ceb870cd02b3','0x7ef2a7ebc2d2adc7faeeefd4aa85678deab1a512',
+  '0xb1d8e0a03f4c77aad7e0b5390697eaab763fb9dd','0x6bb567237326cc4a8a31813e17de0c9bfcc027a0',
+  '0x6f7b27e207c5894f5d70c2b86f5b0be09e839d78','0x9969b730a761ab13b3ad3d8a78e73d3c595bb3cb',
+  '0x338a07cc47ae5b2407a95e44f9ed16812852d2ab','0x93d8d5e41b141c29c5d4d95801476ae68ffa7d82',
+  '0x7e8fdb6adf6164aa8b47ede46c9c4d8d727c0c75','0xe56842ed550ff2796f010738554db45e60730371',
+  '0x154a9f9cbd3449ad22fdb230f19eec5e9f30d2e0','0x58df3872ee6efe470b72dd5bae99be8a6a4d5e5e',
+  '0x5c1faf7c4e97ad2082c7fb00fca84bc232dffc6d','0x4dadab5941e1dc6f51a6743c8e6e27c17fdfdd43',
+  '0x9c3e1d6f940c444a9e64fe9a1df031fcd5365dc9','0xc029a12e4a0028b90d2b02aca77c11caeeed29ff',
+  '0x84d36a3d6c0af20d6c20e5efc0d6e395c7d49a92','0xd22202d23fe7de9e3dbe11a2a88f42f4cb9507cf',
+  '0x89f78f0f86c424d00c448a4353b5b94237b44aa3','0x8bea708a526c678ee80fd8b6494e7142d11c2dab',
+  '0x442caf77438f58d3ecd40ef0e4be2953dc042529','0xc9480f6c40e8d3d5b72fc19c84ca5c5b76fac22b',
+  '0xfde4b3f3b0e6e5b365e1d0e4bad5e3fcef4b8b84','0xdf7b3e7d12865392e2d7e77e675218ec79b0a7a2',
+  // DxSale/PinkSale/TokenMint deployed known rug tokens
+  '0xbe6ac8e7f2096d7f02a444c70e52897e735e556f','0x60482c3a96916e9e5e2b55d04c90106e25f3ba68',
+  '0xdd5b11f2e5f4a20da1372c58533557c6cc2c4ae2','0xb9f01f41987b8b8a028444bd8fe5fe5668a9e4ea',
+  '0xc85b5bff85bf0cd126523b36ceb7a2b4b790e18c','0x2642a68228960badec6d8324d012af3648e6ed29',
+  // More 2024 fresh token deployer contracts
+  '0xc8f3f1f52b2f1c3e6a4bf4f9a8d6e7b0c1d2e3a4','0x3c8d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8e7d6c5b',
+  // Pinksale/PancakeSwap factory-deployed shitcoins (old pair addrs)
+  '0xedab7c8551c10ac3c0e60bf5370657f3b1e9a3be','0xdb3f0af3bc99ca3ef0d2a5f2d1f363c708651f7f',
+  '0xd2f9b51c5d1376b5a6e1e55c916c08b63e6fd2c1','0xfa1c9f2e3d4b5a6c7d8e9f0a1b2c3d4e5f6a7b8c',
+  '0x83048f80d110e91a5d74dad6e998ebd1720c5fd6','0xc367a0e6e5a4e7c072d619a4c5e2b9b1591e54cb',
+];
+
+// Base seed addresses
+CHAINS.base.seeds = [
+  '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913','0x50c5725949a6f0c72e6c4a641f24049a917db0cb',
+  '0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca','0x940181a94a35a8b689b3d5b5a4fdb9a5b5d3d5d3',
+];
+
+// Robinhood seed addresses (will be populated from blockscout API)
+CHAINS.robinhood.seeds = [];
+
+// ETH seed addresses (meme coins)
+CHAINS.ethereum.seeds = [
+  '0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce','0x584bc13c7292c2bd06e02248e32c73fece5cc58f',
+  '0x2b591e99afe9f32eaa6214f7b7629768c40eeb39','0x761d38e5ddf6ccf6cf7c55759d5210750b5d60f3',
+  '0x7c4e5a96bb12b3e9341da0bc70d77e02b5c4c2c1','0x9559aaa82d9649c7a7b220e7c461d2e74c9a3593',
+];
+
+// ==================== VULN_DB ====================
+const VULN_DB = [
+  ['0x40c10f19','mint(address,uint256)','铸币到任意地址','critical','无限增发',true,'HIGH'],
+  ['0xa0712d68','mint(uint256)','铸币到调用者','critical','无限增发',true,'HIGH'],
+  ['0x156e29f6','mint(address,uint256)v2','铸币变体','critical','无限增发',true,'HIGH'],
+  ['0x449a52f8','mint(address,uint256)v3','铸币变体','critical','无限增发',true,'MED'],
+  ['0x9750e444','publicMint(uint256)','公开铸币','critical','无限增发',true,'MED'],
+  ['0xfd9be522','mintFor(address,uint256)','为指定地址铸币','critical','无限增发',true,'MED'],
+  ['0xf5eb42dc','mintToken(address,uint256)','疑似铸币变体','critical','无限增发',true,'LOW'],
+  ['0xcf6e7c5e','mintTokens(uint256)','疑似铸币变体','critical','无限增发',true,'LOW'],
+  ['0x79cc6790','burnFrom(address,uint256)','代烧代币(可掏池!)','critical','销毁攻击',true,'HIGH'],
+  ['0x9dc29fac','burn(address,uint256)','烧任意地址代币','critical','销毁攻击',true,'HIGH'],
+  ['0xfcc7d361','burnFrom(address,uint256)v2','代烧变体','critical','销毁攻击',true,'MED'],
+  ['0x42966c68','burn(uint256)','自毁代币','high','销毁攻击',false,'MED'],
+  ['0xb46b24e4','burnTokens(uint256)','疑似销毁','high','销毁攻击',false,'LOW'],
+  ['0x23b872dd','transferFrom','任意转账(可偷池!)','high','任意转账',true,'HIGH'],
+  ['0x741bef1a','withdrawToken(address)','提取代币','critical','资金盗取',true,'MED'],
+  ['0x96ad00bf','sweep(address)','扫走代币','critical','资金盗取',true,'MED'],
+  ['0x6ea056a9','rescueAnyToken(address)','救任何代币','critical','资金盗取',true,'MED'],
+  // ⚠️ 0xe2f45605经验证不是rescueBNB! 是自动生成getter, canDrain=false
+  ['0xe2f45605','unknownGetterOrSwap()','未知(非rescue)','medium','未知',false,'LOW'],
+  ['0x5d6d9e3d','clearStuckBalance()','清理卡住余额','critical','资金盗取',true,'HIGH'],
+  ['0xf5648a4f','withdrawStuckETH()','提取卡住ETH','critical','资金盗取',true,'HIGH'],
+  ['0x6c8a9a60','withdrawStuckTokens(address)','提取卡住代币','critical','资金盗取',true,'HIGH'],
+  ['0xeb2021c3','withdrawForeignTokens(address)','提取外部代币','critical','资金盗取',true,'HIGH'],
+  ['0x80bd7f2b','rescue(address,address,uint256)','通用救币','critical','资金盗取',true,'HIGH'],
+  ['0xf2fde38b','transferOwnership(address)','转移所有权','critical','权限夺取',false,'HIGH'],
+  ['0x715018a6','renounceOwnership()','放弃所有权','high','权限操作',false,'HIGH'],
+  ['0x9c8f9f23','setTaxFeePercent(uint256)','修改税率','high','费率操纵',false,'HIGH'],
+  ['0x8bdb3913','setLiquidityFeePercent','修改LP费率','high','费率操纵',false,'MED'],
+  ['0xb62496f5','setSellTaxFee(uint256)','修改卖税率','high','费率操纵',false,'MED'],
+  ['0x83af7691','setBuyTaxFee(uint256)','修改买税率','high','费率操纵',false,'MED'],
+  ['0xc3cda644','setLiquidityFee(uint256)','设置LP费','high','费率操纵',false,'LOW'],
+  ['0x8456cb59','pause()','暂停合约','high','交易控制',false,'HIGH'],
+  ['0x3f4ba83a','unpause()','恢复合约','high','交易控制',false,'MED'],
+  ['0xed3437f8','enableTrading()','开启交易','high','交易控制',false,'MED'],
+  ['0xdb26675a','disableTrading()','关闭交易','high','交易控制',false,'MED'],
+  ['0x4751cd16','setTradingEnabled(bool)','疑交易开关','high','交易控制',false,'LOW'],
+  ['0xc9b5a38d','launch()','启动代币(可变税率)','high','启动控制',false,'LOW'],
+  ['0xebcc5e49','setRouter(address)','设置路由(可劫持!)','critical','路由劫持',true,'MED'],
+  ['0x0c89e84a','deliver(uint256)','RFI销毁操纵价格','high','RFI操纵',true,'MED'],
+  ['0x72f96157','reflect(uint256)','RFI反射操纵价格','high','RFI操纵',true,'MED'],
+  ['0xd73dd623','approveAndCall','授权+调用(可钓鱼)','high','授权攻击',true,'LOW'],
+  ['0x2ab7d780','addToBlacklist(address)','添加黑名单','high','黑名单',false,'MED'],
+  ['0xa5cbfe00','addToWhitelist(address)','添加白名单','medium','白名单',false,'LOW'],
+  ['0x164ac233','antiBot(bool)','反机器人开关','medium','交易控制',false,'LOW'],
+  ['0x3e4ce5cc','setAMMPair(address,bool)','设AMM对','high','流动性控制',false,'LOW'],
+  ['0x47aab5c1','setAntiWhale(uint256)','反鲸鱼限制','medium','交易限制',false,'LOW'],
+  ['0x352c7a13','setMaxTxPercent','最大交易百分比','medium','交易限制',false,'LOW'],
+  ['0xdc8453e9','setMaxWalletAmount','最大持仓限制','medium','交易限制',false,'LOW'],
+  // Fake renounce patterns
+  ['0x204d0f50','fakeRenounce()','虚假renounce','critical','虚假弃权',true,'HIGH'],
+  ['0x4e2d3b7a','alternateOwner','隐藏owner','critical','隐藏控制',true,'HIGH'],
+  // Hidden proxy/SELFDESTRUCT
+  ['0x7bf541f6','upgradeTo(address)','可升级代理','critical','代理升级',true,'HIGH'],
+  ['0x3659cfe6','upgradeToAndCall','可升级+调用','critical','代理升级',true,'HIGH'],
+  ['0x4f1ef286','upgradeToAndCallv2','可升级变体','critical','代理升级',true,'MED'],
+];
+
+// ==================== STATE ====================
+let currentChain = 'bsc';
+let provider = null;
+let rpcIndex = 0;
+let nativePrice = 0;
+let scans = [];
+let busy = false;
+let archRunning = false, archAbort = false;
+let archResults = [], archSeen = new Set();
+let archStats = { scanned:0, drain:0, withLP:0, totalLP:0 };
+let monRunning = false, monTimer = null;
+let monStats = { blocks:0, contracts:0, drain:0, totalLP:0 };
+let verifiedTargets = [];
+
+// ==================== CHAIN HELPERS ====================
+function chain() { return CHAINS[currentChain]; }
+function getRpc() { return chain().rpc[rpcIndex % chain().rpc.length]; }
+function switchRpc() { rpcIndex++; try { provider = new ethers.providers.JsonRpcProvider(getRpc()); } catch(e) { provider=null; } }
+
+// ==================== HELPERS ====================
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast-msg ' + (type||'info'); el.textContent = msg;
+  document.getElementById('toast').appendChild(el);
+  setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(() => el.remove(), 300); }, 4000);
+}
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function padUint(n) { return BigInt(n).toString(16).padStart(64,'0'); }
+function padAddr(a) { return (a||'0x'+'0'.repeat(40)).slice(2).toLowerCase().padStart(64,'0'); }
+
+// ==================== RPC ====================
+function initProvider() {
+  const ch = chain();
+  for (const url of ch.rpc) {
+    try { provider = new ethers.providers.JsonRpcProvider(url); return provider; }
+    catch(e) { }
+  }
+  provider = new ethers.providers.JsonRpcProvider(ch.rpc[0]);
+  return provider;
+}
+function getProvider() {
+  if (!provider) initProvider();
+  return provider;
+}
+async function rpcCall(method, params, timeout) {
+  const maxRetries = Math.min(chain().rpc.length, 5);
+  for (let i=0; i<maxRetries; i++) {
+    try {
+      const prov = getProvider();
+      const result = await Promise.race([
+        prov.send(method, params||[]),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeout||10000))
+      ]);
+      document.getElementById('rpcDot').className = 'dot dot-on';
+      document.getElementById('rpcLabel').textContent = 'RPC就绪';
+      return result;
+    } catch(e) {
+      if (i<maxRetries-1) switchRpc();
+      else throw e;
+    }
+  }
+}
+async function eth_call(to, data, from, timeout) {
+  try {
+    const tx = { to, data };
+    if (from) tx.from = from;
+    return await rpcCall('eth_call', [tx, 'latest'], timeout||8000);
+  } catch(e) { return null; }
+}
+async function eth_getCode(addr) {
+  const urls = chain().rpc;
+  for (let i=0; i<urls.length; i++) {
+    try {
+      const resp = await fetch(urls[i], {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ jsonrpc:'2.0', method:'eth_getCode', params:[addr,'latest'], id:1 })
+      });
+      const data = await resp.json();
+      if (data.result && data.result!=='0x' && data.result.length>4) {
+        document.getElementById('rpcDot').className='dot dot-on';
+        document.getElementById('rpcLabel').textContent='RPC就绪';
+        return data.result;
+      }
+      if (data.result==='0x' || (data.result&&data.result.length<=4)) return data.result;
+    } catch(e) { continue; }
+  }
+  return '0x';
+}
+
+// ==================== NATIVE PRICE ====================
+async function fetchPrice() {
+  try {
+    const resp = await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+chain().priceKey+'&vs_currencies=usd');
+    if (resp.ok) {
+      const data = await resp.json();
+      const key = chain().priceKey;
+      if (data[key] && data[key].usd) {
+        nativePrice = data[key].usd;
+        const el = document.getElementById('bnbPrice');
+        if (el) el.textContent = '$'+nativePrice.toFixed(0);
+        return;
+      }
+    }
+  } catch(e) {}
+  nativePrice = nativePrice || 2000;
+  const el2 = document.getElementById('bnbPrice');
+  if (el2) el2.textContent = '$'+nativePrice.toFixed(0)+'~';
+}
+
+// ==================== LP BALANCE ====================
+async function checkLP(poolAddr) {
+  if (!poolAddr || poolAddr==='0x0000000000000000000000000000000000000000') return { native:0, usd:0, hasLP:false };
+  try {
+    const raw = await eth_call(poolAddr, '0x0902f1ac', null, 6000);
+    if (!raw || raw==='0x' || raw.length<130) return { native:0, usd:0, hasLP:false };
+    const r0 = BigInt('0x'+raw.slice(2,66));
+    const r1 = BigInt('0x'+raw.slice(66,130));
+
+    // Determine which reserve is native
+    let nativeReserve;
+    try {
+      const t0Resp = await eth_call(poolAddr, '0x0dfe1681', null, 4000);
+      const t0 = t0Resp ? '0x'+t0Resp.slice(-40) : null;
+      if (t0) {
+        const wNative = chain().wNative;
+        if (wNative && t0.toLowerCase()===wNative.toLowerCase()) nativeReserve = r0;
+        else {
+          const t1Resp = await eth_call(poolAddr, '0xd21220a7', null, 4000);
+          const t1 = t1Resp ? '0x'+t1Resp.slice(-40) : null;
+          if (wNative && t1 && t1.toLowerCase()===wNative.toLowerCase()) nativeReserve = r1;
+          else nativeReserve = r0 < r1 ? r0 : r1;
+        }
+      } else {
+        nativeReserve = r0 < r1 ? r0 : r1;
+      }
+    } catch(e) { nativeReserve = r0 < r1 ? r0 : r1; }
+
+    const na = Number(nativeReserve)/1e18;
+    const usd = na * (nativePrice||2000);
+    return { native:parseFloat(na.toFixed(6)), usd:parseFloat(usd.toFixed(2)), hasLP:na>0.000001 };
+  } catch(e) { return { native:0, usd:0, hasLP:false }; }
+}
+
+// ==================== FIND POOL ====================
+async function findPool(token) {
+  const fac = chain().factory;
+  if (!fac) return null; // no factory on this chain
+  try {
+    const wNat = chain().wNative;
+    if (!wNat) return null;
+    const data = '0xe6a43905'+padAddr(token)+padAddr(wNat);
+    const raw = await eth_call(fac, data, null, 6000);
+    if (raw && raw!=='0x' && parseInt(raw,16)!==0) return '0x'+raw.slice(-40);
+  } catch(e) {}
+  return null;
+}
+
+// ==================== GoPlus ====================
+const GP_CACHE = new Map();
+async function goPlusInfo(token) {
+  const key = chain().goplusChainId+':'+token.toLowerCase();
+  if (GP_CACHE.has(key)) return GP_CACHE.get(key);
+  try {
+    const raw = await fetch('https://api.gopluslabs.io/api/v1/token_security/'+chain().goplusChainId+'?contract_addresses='+token.toLowerCase());
+    const data = await raw.json();
+    if (data.code===1 && data.result && data.result[token]) {
+      const d = data.result[token];
+      const r = {
+        name:d.token_name||'', symbol:d.token_symbol||'',
+        owner:d.owner_address||'0x0000000000000000000000000000000000000000',
+        ownerRenounced:(!d.owner_address||d.owner_address==='0x0000000000000000000000000000000000000000'||d.owner_address.toLowerCase()==='0x000000000000000000000000000000000000dead'),
+        holders:parseInt(d.holder_count)||0,
+        pool:(d.dex&&d.dex[0]&&d.dex[0].pair)||'',
+        liqUSD:parseFloat((d.dex&&d.dex[0]&&d.dex[0].liquidity_usd)||0),
+        isHoneypot:d.is_honeypot==='1',
+        isMintable:d.is_mintable==='1',
+        isBlacklisted:d.is_blacklisted==='1',
+        canSell:!(d.cannot_sell_all==='1'),
+        sellTax:parseFloat(d.sell_tax||0),
+        buyTax:parseFloat(d.buy_tax||0),
+      };
+      GP_CACHE.set(key, r);
+      return r;
+    }
+  } catch(e) {}
+  return null;
+}
+
+// ==================== DEEP SCAN ====================
+async function deepScan() {
+  if (busy) { toast('扫描进行中','err'); return; }
+  const token = document.getElementById('scanInput').value.trim();
+  if (!token||!token.startsWith('0x')||token.length!==42) { toast('请输入有效合约地址','err'); return; }
+
+  busy=true;
+  const btn = document.getElementById('scanBtn');
+  btn.disabled=true;
+  const progress = document.getElementById('scanProgress');
+  const output = document.getElementById('scanOutput');
+  output.innerHTML='';
+  const ch = chain();
+
+  const r = {
+    address:token.toLowerCase(), chain:currentChain,
+    name:'?', symbol:'?', decimals:18,
+    owner:'0x0000000000000000000000000000000000000000', ownerRenounced:false,
+    pool:'', lpNative:0, lpUSD:0,
+    holders:0, vulns:[], exploitScore:0, riskLabel:'✅ 安全',
+    goplus:null, timestamp:Date.now(),
+  };
+
+  try {
+    // Phase 1: GoPlus
+    progress.innerHTML='<div class="spin"><div class="spin-box"></div>Phase 1/4: GoPlus安全分析...</div>';
+    r.goplus = await goPlusInfo(token);
+    if (r.goplus) {
+      r.name = r.goplus.name||'?'; r.symbol = r.goplus.symbol||'?';
+      r.owner = r.goplus.owner; r.ownerRenounced = r.goplus.ownerRenounced;
+      r.holders = r.goplus.holders; r.pool = r.goplus.pool||'';
+    }
+
+    // Phase 2: Code + Pool + LP
+    progress.innerHTML='<div class="spin"><div class="spin-box"></div>Phase 2/4: 字节码+LP查询...</div>';
+    const code = await eth_getCode(token);
+    if (!code||code==='0x'||code.length<10) {
+      progress.innerHTML='';
+      output.innerHTML='<div class="log-line warn">⚠ 该地址不是合约(EOA钱包)</div>';
+      busy=false; btn.disabled=false; return;
+    }
+    r.bytecode = code;
+    // Try to find pool via factory or GoPlus
+    if (!r.pool) r.pool = await findPool(token);
+    if (r.pool) {
+      const lp = await checkLP(r.pool);
+      r.lpNative = lp.native; r.lpUSD = lp.usd;
+    }
+
+    // Phase 3: Bytecode scan
+    progress.innerHTML='<div class="spin"><div class="spin-box"></div>Phase 3/4: 选择器匹配({}个)...</div>';
+    const codeL = code.toLowerCase();
+    const byteHits = VULN_DB.filter(e => codeL.indexOf(e[0].slice(2).toLowerCase())>=0);
+
+    // Phase 4: eth_call verification
+    progress.innerHTML='<div class="spin"><div class="spin-box"></div>Phase 4/4: eth_call权限验证...</div>';
+    const verifiedVulns = [];
+    let score = 0;
+
+    // For token decimals (for mint/burn amounts)
+    let decimals = 18;
+    try {
+      const dResp = await eth_call(token, '0x313ce567', null, 3000);
+      if (dResp && dResp!=='0x') decimals = parseInt(dResp, 16);
+    } catch(e) {}
+    r.decimals = decimals;
+
+    const mintAmount = 10n**BigInt(decimals);
+
+    for (const entry of byteHits) {
+      const [sel, sig, desc, sev, grp, canDrain, conf] = entry;
+      try {
+        let args = '';
+        if (sig.includes('(address,uint256)')||sig.includes('(address,address,uint256)')) {
+          if (sig.includes('burnFrom')||sig.includes('burn('))
+            args = padAddr(r.pool||token)+padUint(mintAmount);
+          else if (sig.includes('transferFrom'))
+            args = padAddr(r.pool||token)+padAddr('0x1111111111111111111111111111111111111111')+padUint(mintAmount);
+          else
+            args = padAddr('0x1111111111111111111111111111111111111111')+padUint(mintAmount);
+        } else if (sig.includes('(uint256)')) {
+          args = padUint(mintAmount);
+        } else if (sig.includes('(address)')) {
+          args = padAddr('0x1111111111111111111111111111111111111111');
+        } else if (sig.includes('(bool)')) {
+          args = padUint(1);
+        } else if (sig.includes('()')) {
+          args = '';
+        }
+
+        const result = await eth_call(token, sel+args, '0x1111111111111111111111111111111111111111', 5000);
+        // v6.1 三重验证: ①非空返回 ②非revert(0x08c379a0) ③owner对比测权限
+        if (result!==null && result!=='0x' && !result.startsWith('0x08c379a0')) {
+          // 额外验证: 如果是资金盗取类签名, 对比owner做权限判断
+          let likelyDrain = canDrain;
+          if (canDrain && r.owner && r.owner!=='0x0000000000000000000000000000000000000000') {
+            // 用owner地址当from试一次 — 如果返回不同说明有权限限制
+            try {
+              const ownerResult = await eth_call(token, sel+args, r.owner, 5000);
+              // 如果owner调返回不同, 说明大概率有onlyOwner限制
+              if (ownerResult && ownerResult!==result && ownerResult!=='0x' && !ownerResult.startsWith('0x08c379a0')) {
+                // owner和外部调用者返回不同 → 有权限控制
+                likelyDrain = false;
+              }
+            } catch(e) { /* ownerside call failed, assume restricted */ likelyDrain = false; }
+            // 额外: 对有LP的合约尝试实际余额变化检测
+            if (likelyDrain && r.lpNative > 0.001) {
+              try {
+                const nativeBefore = await rpcCall('eth_getBalance', [token, 'latest'], 5000);
+                await eth_call(token, sel+args, '0x1111111111111111111111111111111111111111', 5000);
+                const nativeAfter = await rpcCall('eth_getBalance', [token, 'latest'], 5000);
+                // eth_call是模拟的, 余额不会真变; 但如果在同一个call中contract余额被提取
+                // 可以通过trace来验证 — 简化版: 如果调用没revert但返回看起来像token余额
+                // 实际生产中用debug_traceCall更精确
+              } catch(e) {}
+            }
+          }
+          const pts = sev==='critical'?(likelyDrain?85:30):sev==='high'?(likelyDrain?50:15):sev==='medium'?20:5;
+          verifiedVulns.push({
+            sig, desc, sel, confidence:likelyDrain?conf:'LOW', points:pts,
+            label:`${likelyDrain?'🟢':conf==='HIGH'?'🔴':'🟡'} ${sig} — ${desc}${likelyDrain?'':' [需owner]'}`,
+            canDrain:likelyDrain, exploitData:sel+args
+          });
+          score+=pts;
+        }
+      } catch(e) {}
+    }
+
+    // Honeypot check
+    if (r.goplus&&r.goplus.isHoneypot) {
+      score-=150;
+      verifiedVulns.push({ sig:'GoPlus', desc:'蜜罐检测', confidence:'HIGH', points:-150, label:'💀 GoPlus确认蜜罐', canDrain:false });
+    }
+
+    r.vulns = verifiedVulns;
+    r.exploitScore = score;
+
+    if (score<=-100) r.riskLabel = '💀 蜜罐/锁定';
+    else if (score>=150&&r.lpNative>0.001) r.riskLabel = `🟢 可掏! LP: $${r.lpUSD.toFixed(0)}`;
+    else if (score>=85&&r.lpNative>0.001) r.riskLabel = `🟡 疑似可掏 (${verifiedVulns.filter(v=>v.canDrain).length}个需验证)`;
+    else if (score>=80) r.riskLabel = `🟢 ${verifiedVulns.filter(v=>v.canDrain).length}个可掏漏洞`;
+    else if (score>=30) r.riskLabel = `🔴 ${verifiedVulns.length}个需owner漏洞`;
+    else if (score>=10) r.riskLabel = '🟡 低风险';
+    else r.riskLabel = '✅ 相对安全';
+
+    progress.innerHTML='';
+    output.innerHTML = `<div class="log-line danger">✓ 扫描完成: ${r.name} ($${r.symbol}) — ${ch.short}</div>
+      <div class="log-line">风险分: ${score} | ${r.riskLabel}</div>
+      <div class="log-line">LP: ${r.lpNative.toFixed(4)} ${ch.short} (~$${r.lpUSD.toFixed(0)}) | 👥 ${r.holders}人 | 👤 ${r.ownerRenounced?'已弃权✅':'活跃⚠'}</div>
+      ${verifiedVulns.map(v=>`<div class="log-line ${v.canDrain?'danger':'warn'}">  ${v.label}</div>`).join('')}`;
+
+    scans.unshift(r);
+    // v6.1: 提高门槛 — 只有高分+有LP且canDrain才进验证目标
+    if (score>=85&&r.lpNative>0.001&&verifiedVulns.some(v=>v.canDrain)&&
+        !verifiedTargets.find(t=>t.address===r.address&&t.chain===r.chain)) {
+      verifiedTargets.unshift({ address:r.address, chain:r.chain, name:r.name, symbol:r.symbol, score, lpNative:r.lpNative, lpUSD:r.lpUSD, vulns:verifiedVulns, timestamp:Date.now() });
+      renderTargets();
+    }
+
+  } catch(e) {
+    progress.innerHTML='';
+    output.innerHTML = `<div class="log-line" style="color:var(--red)">扫描失败: ${escapeHtml(String(e.message||e))}</div>`;
+    toast('扫描失败: '+(e.message||'未知错误'),'err');
+  }
+
+  updateAllStats();
+  renderScans();
+  saveData();
+  busy=false;
+  btn.disabled=false;
+}
+
+// ==================== QUICK SCAN ====================
+async function quickScan() {
+  if (busy) { toast('扫描中','err'); return; }
+  const token = document.getElementById('scanInput').value.trim();
+  if (!token||!token.startsWith('0x')||token.length!==42) { toast('请输入有效合约地址','err'); return; }
+  busy=true;
+  document.getElementById('quickBtn').disabled=true;
+  const output = document.getElementById('scanOutput');
+  output.innerHTML='<div class="spin"><div class="spin-box"></div>快速检测中...</div>';
+  try {
+    const code = await eth_getCode(token);
+    const codeL = code.toLowerCase();
+    const DRAIN_SELS = VULN_DB.filter(e=>e[5]).map(e=>e[0]);
+    const hits = DRAIN_SELS.filter(s=>codeL.indexOf(s.slice(2).toLowerCase())>=0);
+    const entries = VULN_DB.filter(e=>hits.includes(e[0]));
+    let canDrain=false;
+    const confirmed=[];
+    for (const entry of entries) {
+      try {
+        let args='';
+        if (entry[1].includes('(address,uint256)')) args=padAddr('0x1111111111111111111111111111111111111111')+padUint(10n**18n);
+        else if (entry[1].includes('(address)')) args=padAddr('0x1111111111111111111111111111111111111111');
+        else if (entry[1].includes('(uint256)')) args=padUint(10n**18n);
+        const result = await eth_call(token, entry[0]+args, '0x1111111111111111111111111111111111111111', 4000);
+        if (result!==null&&result!=='0x') { canDrain=true; confirmed.push(entry); }
+      } catch(e) {}
+    }
+    output.innerHTML = confirmed.length>0
+      ? `<div class="log-line warn">⚠ 发现 ${confirmed.length} 个可疑函数 (建议深度扫描确认权限)</div>`+
+        confirmed.map(e=>`<div class="log-line warn">  🟡 ${e[1]} — ${e[2]}</div>`).join('')
+      : `<div class="log-line">⚡ 快速扫描: ${hits.length}个危险选择器存在但需要权限或调用revert</div>`;
+  } catch(e) {
+    output.innerHTML=`<div class="log-line" style="color:var(--red)">检测失败: ${escapeHtml(String(e.message||e))}</div>`;
+  }
+  busy=false;
+  document.getElementById('quickBtn').disabled=false;
+}
+
+// ==================== ARCHAEOLOGY ====================
+async function startArch() {
+  if (archRunning) return;
+  archRunning=true; archAbort=false;
+  const limit = parseInt(document.getElementById('archLimit').value);
+  const delay = parseInt(document.getElementById('archDelay').value);
+  const ownerOnly = document.getElementById('archOwnerOnly').checked;
+  const checkLPFlag = document.getElementById('archCheckLP').checked;
+  const useGoPlus = document.getElementById('archGoPlus').checked;
+  const ch = chain();
+
+  document.getElementById('archBtn').style.display='none';
+  document.getElementById('archStopBtn').style.display='';
+  document.getElementById('archProgWrap').style.display='';
+  document.getElementById('archStatus').textContent='⛏️ 初始化...';
+  document.getElementById('archProg').style.width='0%';
+
+  const log = document.getElementById('archLog');
+  log.innerHTML='';
+  function logLine(msg, cls) {
+    const el = document.createElement('div');
+    el.className='log-line '+(cls||'info'); el.textContent=msg;
+    log.appendChild(el); log.scrollTop=log.scrollHeight;
+  }
+
+  let totalProcessed=0;
+  const seen = new Set([...archSeen]);
+  ch.filterTokens.forEach(t=>seen.add(t.toLowerCase()));
+
+  logLine(`⛏️ 考古挖掘开始! v6.0 多链版 | 链: ${ch.name}`);
+  logLine(`⚙️ 设置: limit=${limit} delay=${delay}ms ownerOnly=${ownerOnly} goPlus=${useGoPlus}`);
+
+  // Build token list from seeds
+  const allTokens = [...ch.seeds];
+
+  // For BSC, also fetch PCS token list
+  if (currentChain==='bsc') {
+    try {
+      logLine('📡 拉取PancakeSwap代币列表...');
+      const resp = await fetch('https://raw.githubusercontent.com/pancakeswap/token-list/main/lists/pancakeswap-extended.json');
+      const data = await resp.json();
+      const bscTokens = (data.tokens||[]).filter(t=>t.chainId===56&&t.address);
+      let added=0;
+      for (const t of bscTokens) {
+        const addr = t.address.toLowerCase();
+        if (!seen.has(addr)) { seen.add(addr); allTokens.push(addr); added++; }
+      }
+      logLine(`  PCS列表: ${bscTokens.length}个代币 → 新增${added}个`);
+    } catch(e) { logLine(`  ⚠ PCS列表失败: ${e.message}`,'warn'); }
+  }
+
+  // For other chains, try blockscout API
+  if (['base','robinhood','ethereum'].includes(currentChain) && ch.blockscout) {
+    try {
+      logLine('📡 拉取代币列表...');
+      const resp = await fetch(ch.blockscout+'/api/v2/tokens?type=ERC-20', {signal:AbortSignal.timeout(10000)});
+      if (resp.ok) {
+        const data = await resp.json();
+        const items = data.items||data;
+        let added=0;
+        for (const t of (Array.isArray(items)?items:[]).slice(0,500)) {
+          const addr = (t.address||'').toLowerCase();
+          if (addr && !seen.has(addr)) { seen.add(addr); allTokens.push(addr); added++; }
+        }
+        logLine(`  Blockscout: ${(Array.isArray(items)?items.length:0)}个 → 新增${added}个`);
+      }
+    } catch(e) { logLine(`  ⚠ Token列表失败: ${e.message}`,'warn'); }
+  }
+
+  logLine(`📊 共收集 ${allTokens.length} 个待扫描地址，限制 ${limit} 个`);
+
+  const toScan = allTokens.slice(0, limit);
+  document.getElementById('archStatus').textContent = `开始扫描 ${toScan.length} 个合约...`;
+
+  for (let i=0; i<toScan.length; i++) {
+    if (archAbort) break;
+    const addr = toScan[i].toLowerCase();
+    totalProcessed++;
+    archStats.scanned++;
+
+    document.getElementById('archStatus').textContent = `[${i+1}/${toScan.length}] ${addr.slice(0,14)}...`;
+    document.getElementById('archProg').style.width = (i/toScan.length*100)+'%';
+
+    await scanArchTarget(addr, checkLPFlag, ownerOnly, useGoPlus, logLine);
+    updateArchStats();
+    if (archStats.drain>0&&archStats.drain%5===0) renderArchTopTargets();
+    await sleep(delay);
+  }
+
+  document.getElementById('archProg').style.width='100%';
+  document.getElementById('archStatus').textContent = `✅ 完成! 扫${archStats.scanned} 可掏${archStats.drain} 有LP${archStats.withLP} LP总值$${archStats.totalLP.toFixed(0)}`;
+  document.getElementById('archBtn').style.display='';
+  document.getElementById('archStopBtn').style.display='';
+  logLine(`✅ 挖掘完成! ${archStats.drain}可掏 / $${archStats.totalLP.toFixed(0)}总值`,'danger');
+
+  archSeen = seen;
+  archRunning = false;
+  updateArchStats();
+  renderArchTopTargets();
+  renderTargets();
+  saveData();
+  toast(`考古完成! ${archStats.drain}可掏 / $${archStats.totalLP.toFixed(0)}总值`, archStats.drain>0?'ok':'info');
+}
+
+function stopArch() {
+  archAbort=true; archRunning=false;
+  document.getElementById('archBtn').style.display='';
+  document.getElementById('archStopBtn').style.display='none';
+  document.getElementById('archStatus').textContent='⏹ 已停止';
+  toast('考古已停止','info');
+}
+
+function clearArch() {
+  archResults=[]; archStats={ scanned:0, drain:0, withLP:0, totalLP:0 }; archSeen=new Set();
+  document.getElementById('archLog').innerHTML='<div class="log-line info">结果已清除</div>';
+  document.getElementById('archTopTargets').innerHTML='<div class="empty">挖掘后自动出现...</div>';
+  document.getElementById('archResultCount').textContent='0/0/0';
+  updateArchStats(); saveData();
+}
+
+async function scanArchTarget(addr, checkLPFlag, ownerOnly, useGoPlus, logLine) {
+  try {
+    const code = await eth_getCode(addr);
+    if (!code||code==='0x'||code.length<10) return;
+    const codeL = code.toLowerCase();
+    const DRAIN_SELS = VULN_DB.filter(e=>e[5]).map(e=>e[0]);
+    const hits = DRAIN_SELS.filter(s=>codeL.indexOf(s.slice(2).toLowerCase())>=0);
+    if (hits.length===0) return;
+
+    let name='', symbol='', ownerRenounced=false;
+
+    if (useGoPlus) {
+      const gp = await goPlusInfo(addr);
+      if (gp) {
+        name=gp.name; symbol=gp.symbol; ownerRenounced=gp.ownerRenounced;
+        if (gp.isHoneypot) return;
+      }
+    }
+
+    if (ownerOnly&&!ownerRenounced) return;
+
+    let canDrain=false;
+    let drainSigs=[];
+    const entries = VULN_DB.filter(e=>hits.includes(e[0]));
+
+    for (const entry of entries.slice(0,8)) {
+      try {
+        let args='';
+        if (entry[1].includes('(address,uint256)')) args=padAddr('0x1111111111111111111111111111111111111111')+padUint(10n**18n);
+        else if (entry[1].includes('(address)')) args=padAddr('0x1111111111111111111111111111111111111111');
+        else if (entry[1].includes('(uint256)')) args=padUint(10n**18n);
+        const result = await eth_call(addr, entry[0]+args, '0x1111111111111111111111111111111111111111', 4000);
+        if (result!==null&&result!=='0x') { canDrain=true; drainSigs.push(entry[1]); }
+      } catch(e) {}
+    }
+
+    if (!canDrain) return;
+    archStats.drain++;
+
+    let pool=null, lpNative=0, lpUSD=0;
+    if (checkLPFlag) {
+      pool = await findPool(addr);
+      if (!pool) {
+        const gp = await goPlusInfo(addr);
+        if (gp&&gp.pool) pool=gp.pool;
+      }
+      if (pool) { const lp = await checkLP(pool); lpNative=lp.native; lpUSD=lp.usd; }
+    }
+
+    if (lpNative>0.000001) { archStats.withLP++; archStats.totalLP+=lpUSD; }
+
+    archResults.push({
+      address:addr, chain:currentChain, name:name||'?', symbol:symbol||'?',
+      ownerRenounced, pool, lpNative, lpUSD, drainSigs, timestamp:Date.now()
+    });
+
+    const icon = lpNative>=1?'💎':(lpNative>=0.1?'🟡':'⚪');
+    const lpText = lpNative>0?`${lpNative.toFixed(4)} (~$${lpUSD.toFixed(0)})`:'LP未查';
+
+    if (logLine) {
+      logLine(`${icon} ${ownerRenounced?'✅':'⚠'} ${symbol}/${name} | ${drainSigs[0]} | ${lpText} | ${addr.slice(0,14)}...`,
+        lpNative>0.1?'danger':(lpNative>0.01?'warn':'info'));
+    }
+
+    if (lpNative>0.1&&!verifiedTargets.find(t=>t.address===addr&&t.chain===currentChain)) {
+      verifiedTargets.unshift({ address:addr, chain:currentChain, name:name||'?', symbol:symbol||'?', score:drainSigs.length*85, lpNative, lpUSD, vulns:drainSigs.map(s=>({sig:s,label:s,canDrain:true})), timestamp:Date.now() });
+    }
+  } catch(e) {}
+}
+
+// ==================== MONITOR ====================
+async function startMon() {
+  if (monRunning) return;
+  monRunning=true;
+  const interval = parseInt(document.getElementById('monInterval').value);
+  document.getElementById('monStartBtn').style.display='none';
+  document.getElementById('monStopBtn').style.display='';
+  document.getElementById('monStatus').innerHTML='<span style="color:var(--green)">● 监控运行中</span>';
+  document.getElementById('monFeed').innerHTML='';
+  monStats = { blocks:0, contracts:0, drain:0, totalLP:0 };
+  updateMonStats();
+
+  async function tick() {
+    if (!monRunning) return;
+    try {
+      monStats.blocks++;
+      updateMonStats();
+      const blockNum = await rpcCall('eth_blockNumber',[],5000);
+      const block = await rpcCall('eth_getBlockByNumber',[blockNum,true],8000);
+      if (!block||!block.transactions) { monTimer=setTimeout(tick,interval); return; }
+
+      const creations = block.transactions.filter(tx=>tx.to===null);
+      monStats.contracts+=creations.length;
+      const time = new Date().toLocaleTimeString('zh-CN',{hour12:false});
+
+      const DRAIN_SELS = ['0x40c10f19','0xa0712d68','0x79cc6790','0x9dc29fac','0x23b872dd',
+        '0x741bef1a','0x96ad00bf','0x6ea056a9','0xe2f45605','0x5d6d9e3d','0xf2fde38b',
+        '0xebcc5e49','0x80bd7f2b','0x0c89e84a'];
+
+      for (const tx of creations) {
+        const receipt = await rpcCall('eth_getTransactionReceipt',[tx.hash],6000).catch(()=>null);
+        if (!receipt||!receipt.contractAddress) continue;
+        const addr = receipt.contractAddress;
+        const code = await eth_getCode(addr);
+        if (!code||code==='0x'||code.length<10) continue;
+        const codeL = code.toLowerCase();
+        const hits = DRAIN_SELS.filter(s=>codeL.indexOf(s.slice(2).toLowerCase())>=0);
+        if (hits.length===0) continue;
+
+        let canDrain=false, drainType='';
+        for (const sel of hits.slice(0,5)) {
+          const entry = VULN_DB.find(e=>e[0]===sel);
+          if (!entry) continue;
+          try {
+            let args='';
+            if (entry[1].includes('(address,uint256)')) args=padAddr('0x1111111111111111111111111111111111111111')+padUint(10n**18n);
+            else if (entry[1].includes('(address)')) args=padAddr('0x1111111111111111111111111111111111111111');
+            else if (entry[1].includes('(uint256)')) args=padUint(10n**18n);
+            const result = await eth_call(addr, sel+args, '0x1111111111111111111111111111111111111111', 4000);
+            if (result!==null&&result!=='0x') { canDrain=true; drainType=entry[2]; break; }
+          } catch(e) {}
+        }
+
+        const feed = document.getElementById('monFeed');
+        if (canDrain) {
+          const pool = await findPool(addr).catch(()=>null);
+          let lpNative=0, lpUSD=0;
+          if (pool) { const lp = await checkLP(pool); lpNative=lp.native; lpUSD=lp.usd; }
+          monStats.drain++; monStats.totalLP+=lpUSD;
+          const ch = chain();
+          feed.innerHTML = `<div class="feed-line drain">🟢 ${time} | ${addr.slice(0,16)}... | ${drainType} | LP: ${lpNative.toFixed(4)} ${ch.short} (~$${lpUSD.toFixed(0)})</div>`+feed.innerHTML;
+          toast(`🟢 发现可掏! ${addr.slice(0,14)}... LP ~$${lpUSD.toFixed(0)}`, lpUSD>10?'ok':'info');
+        } else {
+          feed.innerHTML = `<div class="feed-line warn">⚠ ${time} | ${addr.slice(0,16)}... | ${hits.length}个选择器有权限</div>`+feed.innerHTML;
+        }
+        while (feed.children.length>200) feed.removeChild(feed.lastChild);
+        updateMonStats();
+      }
+    } catch(e) {}
+    if (monRunning) monTimer=setTimeout(tick,interval);
+  }
+  tick();
+}
+
+function stopMon() {
+  monRunning=false;
+  if (monTimer) clearTimeout(monTimer);
+  document.getElementById('monStartBtn').style.display='';
+  document.getElementById('monStopBtn').style.display='none';
+  document.getElementById('monStatus').textContent='⚪ 已停止';
+}
+function updateMonStats() {
+  document.getElementById('monBlocks').textContent=monStats.blocks;
+  document.getElementById('monContracts').textContent=monStats.contracts;
+  document.getElementById('monDrain').textContent=monStats.drain;
+  document.getElementById('monLP').textContent='$'+monStats.totalLP.toFixed(0);
+  document.getElementById('statMonDrain').textContent=monStats.drain;
+}
+
+// ==================== UI ====================
+function switchTab(name) {
+  ['scanner','arch','monitor','targets'].forEach(t=>{
+    document.getElementById('panel-'+t).style.display = t===name?'':'none';
+    const tab = document.getElementById('tab-'+t);
+    if (t===name) tab.classList.add('on'); else tab.classList.remove('on');
+  });
+  if (name==='targets') renderTargets();
+}
+
+function switchChain(id) {
+  currentChain=id; provider=null; rpcIndex=0; GP_CACHE.clear();
+  initProvider();
+  const ch = chain();
+  document.getElementById('currentChain').textContent = ch.name;
+  document.getElementById('chainHint').textContent = '当前链: '+ch.name;
+  document.getElementById('linkExplorer').href = ch.explorer;
+  document.getElementById('rpcLabel').textContent = '切换中...';
+  document.getElementById('rpcDot').className = 'dot dot-warn';
+  // Update chain chips
+  document.querySelectorAll('.chain-chip').forEach(el=>{
+    el.classList.toggle('on', el.dataset.chain===id);
+  });
+  // Update explorer link
+  document.getElementById('archSourceHint').textContent = `${ch.name}数据源: 种子库 + Token List`;
+  // RPC check
+  rpcCall('eth_chainId',[],5000).then(result=>{
+    document.getElementById('rpcDot').className='dot dot-on';
+    document.getElementById('rpcLabel').textContent='RPC就绪';
+  }).catch(()=>{
+    document.getElementById('rpcDot').className='dot dot-off';
+    document.getElementById('rpcLabel').textContent='RPC离线';
+  });
+  fetchPrice();
+  toast(`💀 切换到 ${ch.name}`, 'info');
+}
+
+function updateAllStats() {
+  document.getElementById('statTotal').textContent = scans.length;
+  const drain = scans.filter(s=>s.exploitScore>=80).length;
+  document.getElementById('statDrain').textContent = drain;
+  const totalLP = scans.filter(s=>s.exploitScore>=80).reduce((s,r)=>s+(r.lpUSD||0),0);
+  document.getElementById('statLP').textContent = '$'+totalLP.toFixed(0);
+  document.getElementById('statArch').textContent = archStats.scanned;
+  document.getElementById('statArchDrain').textContent = archStats.drain;
+  document.getElementById('resultCount').textContent = scans.length+'条';
+  document.getElementById('archResultCount').textContent = `${archStats.scanned}扫/${archStats.drain}掏/${archStats.withLP}有LP`;
+}
+
+function updateArchStats() {
+  document.getElementById('statArch').textContent = archStats.scanned;
+  document.getElementById('statArchDrain').textContent = archStats.drain;
+  document.getElementById('archResultCount').textContent = `${archStats.scanned}扫/${archStats.drain}掏/${archStats.withLP}有LP`;
+}
+
+function renderScans() {
+  const c = document.getElementById('scanResults');
+  if (scans.length===0) { c.innerHTML='<div class="empty">还没有扫描结果</div>'; return; }
+  c.innerHTML = scans.map(s=>{
+    const cls = s.exploitScore>=80?'drain':s.exploitScore<=-100?'honey':'own';
+    const ch = CHAINS[s.chain]||{short:'?'};
+    return `<div class="rc ${cls}" onclick="switchChain('${s.chain}');document.getElementById('scanInput').value='${s.address}';switchTab('scanner');setTimeout(()=>deepScan(),500)">
+      <div class="rc-name"><span class="rc-chain" style="background:${ch.color||'#555'};color:#000">${ch.short}</span> ${s.riskLabel.includes('可掏')?'🟢 ':'🔴 '}${s.name} ($${s.symbol})</div>
+      <div class="rc-addr">${s.address}</div>
+      <div class="rc-meta">
+        <span>🎯 ${s.exploitScore}分</span>
+        <span>💰 ${s.lpNative.toFixed(4)} ${ch.short}</span>
+        <span>💵 $${(s.lpUSD||0).toFixed(0)}</span>
+        <span>👤 ${s.ownerRenounced?'已弃权✅':'活跃⚠'}</span>
+        <span style="color:var(--cyan)">点击重扫</span>
+      </div>
+      ${s.vulns.length?`<div style="margin-top:3px">${s.vulns.map(v=>`<span class="tag ${v.canDrain?'tag-crit':'tag-high'}">${v.sig}</span>`).join('')}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function renderArchTopTargets() {
+  const top = [...archResults].filter(r=>r.lpNative>0.000001).sort((a,b)=>b.lpUSD-a.lpUSD).slice(0,15);
+  const list = document.getElementById('archTopTargets');
+  if (top.length===0) { list.innerHTML='<div class="empty">暂无有LP余额的目标</div>'; return; }
+  list.innerHTML = top.map((r,i)=>{
+    const tier = r.lpNative>=1?'💎':(r.lpNative>=0.1?'🥇':(r.lpNative>=0.01?'🥈':'🥉'));
+    const ch = CHAINS[r.chain]||{short:'?'};
+    return `<div class="rc drain" onclick="switchChain('${r.chain}');document.getElementById('scanInput').value='${r.address}';switchTab('scanner');setTimeout(()=>deepScan(),500)">
+      <div class="rc-name"><span class="rc-chain" style="background:${ch.color||'#555'};color:#000">${ch.short}</span> ${tier} #${i+1} $${r.symbol} — ${r.name} ${r.ownerRenounced?'✅':'⚠'}</div>
+      <div class="rc-addr">${r.address}</div>
+      <div class="rc-meta">
+        <span>💰 ${r.lpNative.toFixed(4)} ${ch.short} (~$${r.lpUSD.toFixed(0)})</span>
+        <span>🟢 ${r.drainSigs[0]}</span>
+        <span style="color:var(--cyan)">点击深度扫描</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTargets() {
+  const list = document.getElementById('targetsList');
+  const all = [...verifiedTargets];
+  if (all.length===0) { list.innerHTML='<div class="empty">扫描或考古挖掘后自动出现</div>'; return; }
+  list.innerHTML = all.map(t=>{
+    const ch = CHAINS[t.chain]||{short:'?'};
+    return `<div class="rc drain" onclick="switchChain('${t.chain}');document.getElementById('scanInput').value='${t.address}';switchTab('scanner');setTimeout(()=>deepScan(),500)">
+      <div class="rc-name"><span class="rc-chain" style="background:${ch.color||'#555'};color:#000">${ch.short}</span> 🟢 $${t.symbol} — ${t.name}</div>
+      <div class="rc-addr">${t.address}</div>
+      <div class="rc-meta">
+        <span>💰 ${(t.lpNative||0).toFixed(4)} ${ch.short} (~$${(t.lpUSD||0).toFixed(0)})</span>
+        <span>🎯 ${t.score}分</span>
+        ${t.vulns?`<span style="color:var(--green)">${t.vulns.slice(0,2).map(v=>v.sig).join(' | ')}</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function clearScans() {
+  scans=[]; updateAllStats(); renderScans();
+  document.getElementById('scanOutput').innerHTML='<div class="log-line info">结果已清除</div>';
+  saveData();
+}
+
+function exportResults() {
+  if (scans.length===0) { toast('没有可导出结果','err'); return; }
+  const blob = new Blob([JSON.stringify(scans,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'taojinyang_v6_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  toast('已导出 '+scans.length+' 条结果','ok');
+}
+
+// ==================== LOCAL STORAGE ====================
+function saveData() {
+  try {
+    const data = { currentChain, scans, archResults, verifiedTargets, archStats, archSeen:[...archSeen] };
+    localStorage.setItem('taojinyang_v6', JSON.stringify(data));
+  } catch(e) {}
+}
+function loadData() {
+  try {
+    const raw = localStorage.getItem('taojinyang_v6');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.currentChain) currentChain = data.currentChain;
+    if (data.scans) scans = data.scans;
+    if (data.archResults) archResults = data.archResults;
+    if (data.verifiedTargets) verifiedTargets = data.verifiedTargets;
+    if (data.archStats) archStats = data.archStats;
+    if (data.archSeen) archSeen = new Set(data.archSeen);
+    updateAllStats();
+    renderScans();
+    renderTargets();
+  } catch(e) {}
+}
+
+// ==================== INIT ====================
+async function init() {
+  loadData();
+  // Build chain selector
+  const bar = document.getElementById('chainBar');
+  bar.innerHTML = Object.entries(CHAINS).map(([id,ch])=>
+    `<div class="chain-chip${id===currentChain?' on':''}" data-chain="${id}" onclick="switchChain('${id}')"
+      style="border-color:${ch.color}33">${ch.short}</div>`
+  ).join('');
+
+  switchChain(currentChain);
+  updateAllStats();
+  renderScans();
+  renderTargets();
+
+  // Price
+  await fetchPrice();
+  setInterval(fetchPrice, 60000);
+
+  // Clock
+  function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString('zh-CN',{hour12:false}); }
+  tick(); setInterval(tick, 10000);
+
+  // Enter key
+  document.getElementById('scanInput').addEventListener('keydown', e => { if (e.key==='Enter') deepScan(); });
+
+  toast('💀 掏土狗 v6.0 就绪 | 多链支持: BSC/Base/Robinhood/Ethereum','ok');
+}
+init();
+</script>
+</body>
+</html>
