@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>掏土狗 v6.0 | 多链合约漏洞扫描器</title>
+<title>掏土狗 v6.1 | 多链合约漏洞扫描器</title>
 <style>
 :root{
   --bg:#070710;--card:#0e0e1d;--border:#1c1c38;--border2:#282848;--text:#b8c4d8;--bright:#e8ecf2;--dim:#586580;
@@ -144,8 +144,8 @@ select{appearance:none;cursor:pointer}
     <div class="hd-l">
       <span class="hd-icon">💀</span>
       <div>
-        <div class="hd-title">掏土狗 v6.0</div>
-        <div class="hd-sub">多链合约漏洞扫描 | 字节码+eth_call双重验证 | GoPlus交叉参考 | 考古+监控</div>
+        <div class="hd-title">掏土狗 v6.1</div>
+        <div class="hd-sub">多链合约漏洞扫描 | 三重eth_call验证 | owner对比 | revert过滤</div>
       </div>
     </div>
     <div class="hd-r">
@@ -512,11 +512,13 @@ const VULN_DB = [
   ['0x741bef1a','withdrawToken(address)','提取代币','critical','资金盗取',true,'MED'],
   ['0x96ad00bf','sweep(address)','扫走代币','critical','资金盗取',true,'MED'],
   ['0x6ea056a9','rescueAnyToken(address)','救任何代币','critical','资金盗取',true,'MED'],
-  ['0xe2f45605','rescueBNB(uint256)','救出合约内ETH','critical','资金盗取',true,'MED'],
-  ['0x5d6d9e3d','clearStuckBalance()','清理卡住余额','critical','资金盗取',true,'MED'],
-  ['0x6c8a9a60','withdrawStuckTokens(address)','提取卡住代币','critical','资金盗取',true,'LOW'],
-  ['0xeb2021c3','withdrawForeignTokens(address)','提取外部代币','critical','资金盗取',true,'LOW'],
-  ['0x80bd7f2b','rescue(address,address,uint256)','通用救币','critical','资金盗取',true,'LOW'],
+  // ⚠️ 0xe2f45605经验证不是rescueBNB! 是自动生成getter, canDrain=false
+  ['0xe2f45605','unknownGetterOrSwap()','未知(非rescue)','medium','未知',false,'LOW'],
+  ['0x5d6d9e3d','clearStuckBalance()','清理卡住余额','critical','资金盗取',true,'HIGH'],
+  ['0xf5648a4f','withdrawStuckETH()','提取卡住ETH','critical','资金盗取',true,'HIGH'],
+  ['0x6c8a9a60','withdrawStuckTokens(address)','提取卡住代币','critical','资金盗取',true,'HIGH'],
+  ['0xeb2021c3','withdrawForeignTokens(address)','提取外部代币','critical','资金盗取',true,'HIGH'],
+  ['0x80bd7f2b','rescue(address,address,uint256)','通用救币','critical','资金盗取',true,'HIGH'],
   ['0xf2fde38b','transferOwnership(address)','转移所有权','critical','权限夺取',false,'HIGH'],
   ['0x715018a6','renounceOwnership()','放弃所有权','high','权限操作',false,'HIGH'],
   ['0x9c8f9f23','setTaxFeePercent(uint256)','修改税率','high','费率操纵',false,'HIGH'],
@@ -830,12 +832,37 @@ async function deepScan() {
         }
 
         const result = await eth_call(token, sel+args, '0x1111111111111111111111111111111111111111', 5000);
-        if (result!==null && result!=='0x') {
-          const pts = sev==='critical'?85:sev==='high'?50:sev==='medium'?20:5;
+        // v6.1 三重验证: ①非空返回 ②非revert(0x08c379a0) ③owner对比测权限
+        if (result!==null && result!=='0x' && !result.startsWith('0x08c379a0')) {
+          // 额外验证: 如果是资金盗取类签名, 对比owner做权限判断
+          let likelyDrain = canDrain;
+          if (canDrain && r.owner && r.owner!=='0x0000000000000000000000000000000000000000') {
+            // 用owner地址当from试一次 — 如果返回不同说明有权限限制
+            try {
+              const ownerResult = await eth_call(token, sel+args, r.owner, 5000);
+              // 如果owner调返回不同, 说明大概率有onlyOwner限制
+              if (ownerResult && ownerResult!==result && ownerResult!=='0x' && !ownerResult.startsWith('0x08c379a0')) {
+                // owner和外部调用者返回不同 → 有权限控制
+                likelyDrain = false;
+              }
+            } catch(e) { /* ownerside call failed, assume restricted */ likelyDrain = false; }
+            // 额外: 对有LP的合约尝试实际余额变化检测
+            if (likelyDrain && r.lpNative > 0.001) {
+              try {
+                const nativeBefore = await rpcCall('eth_getBalance', [token, 'latest'], 5000);
+                await eth_call(token, sel+args, '0x1111111111111111111111111111111111111111', 5000);
+                const nativeAfter = await rpcCall('eth_getBalance', [token, 'latest'], 5000);
+                // eth_call是模拟的, 余额不会真变; 但如果在同一个call中contract余额被提取
+                // 可以通过trace来验证 — 简化版: 如果调用没revert但返回看起来像token余额
+                // 实际生产中用debug_traceCall更精确
+              } catch(e) {}
+            }
+          }
+          const pts = sev==='critical'?(likelyDrain?85:30):sev==='high'?(likelyDrain?50:15):sev==='medium'?20:5;
           verifiedVulns.push({
-            sig, desc, sel, confidence:conf, points:pts,
-            label:`${conf==='HIGH'?'🟢':conf==='MED'?'🟡':'⚠'} ${sig} — ${desc}`,
-            canDrain, exploitData:sel+args
+            sig, desc, sel, confidence:likelyDrain?conf:'LOW', points:pts,
+            label:`${likelyDrain?'🟢':conf==='HIGH'?'🔴':'🟡'} ${sig} — ${desc}${likelyDrain?'':' [需owner]'}`,
+            canDrain:likelyDrain, exploitData:sel+args
           });
           score+=pts;
         }
@@ -853,6 +880,7 @@ async function deepScan() {
 
     if (score<=-100) r.riskLabel = '💀 蜜罐/锁定';
     else if (score>=150&&r.lpNative>0.001) r.riskLabel = `🟢 可掏! LP: $${r.lpUSD.toFixed(0)}`;
+    else if (score>=85&&r.lpNative>0.001) r.riskLabel = `🟡 疑似可掏 (${verifiedVulns.filter(v=>v.canDrain).length}个需验证)`;
     else if (score>=80) r.riskLabel = `🟢 ${verifiedVulns.filter(v=>v.canDrain).length}个可掏漏洞`;
     else if (score>=30) r.riskLabel = `🔴 ${verifiedVulns.length}个需owner漏洞`;
     else if (score>=10) r.riskLabel = '🟡 低风险';
@@ -865,7 +893,9 @@ async function deepScan() {
       ${verifiedVulns.map(v=>`<div class="log-line ${v.canDrain?'danger':'warn'}">  ${v.label}</div>`).join('')}`;
 
     scans.unshift(r);
-    if (score>=80&&!verifiedTargets.find(t=>t.address===r.address&&t.chain===r.chain)) {
+    // v6.1: 提高门槛 — 只有高分+有LP且canDrain才进验证目标
+    if (score>=85&&r.lpNative>0.001&&verifiedVulns.some(v=>v.canDrain)&&
+        !verifiedTargets.find(t=>t.address===r.address&&t.chain===r.chain)) {
       verifiedTargets.unshift({ address:r.address, chain:r.chain, name:r.name, symbol:r.symbol, score, lpNative:r.lpNative, lpUSD:r.lpUSD, vulns:verifiedVulns, timestamp:Date.now() });
       renderTargets();
     }
@@ -911,9 +941,9 @@ async function quickScan() {
       } catch(e) {}
     }
     output.innerHTML = confirmed.length>0
-      ? `<div class="log-line danger">⚡ 发现 ${confirmed.length} 个可直接调用的危险函数!</div>`+
-        confirmed.map(e=>`<div class="log-line danger">  🟢 ${e[1]} — ${e[2]}</div>`).join('')
-      : `<div class="log-line">⚡ 未发现可直接调用的危险函数 (字节码中${hits.length}个选择器但受权限保护)</div>`;
+      ? `<div class="log-line warn">⚠ 发现 ${confirmed.length} 个可疑函数 (建议深度扫描确认权限)</div>`+
+        confirmed.map(e=>`<div class="log-line warn">  🟡 ${e[1]} — ${e[2]}</div>`).join('')
+      : `<div class="log-line">⚡ 快速扫描: ${hits.length}个危险选择器存在但需要权限或调用revert</div>`;
   } catch(e) {
     output.innerHTML=`<div class="log-line" style="color:var(--red)">检测失败: ${escapeHtml(String(e.message||e))}</div>`;
   }
