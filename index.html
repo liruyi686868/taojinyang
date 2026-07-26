@@ -586,7 +586,7 @@ function initProvider() {
   const ch = chain();
   for (const url of ch.rpc) {
     try { provider = new ethers.providers.JsonRpcProvider(url); return provider; }
-    catch(e) { continue; }
+    catch(e) { }
   }
   provider = new ethers.providers.JsonRpcProvider(ch.rpc[0]);
   return provider;
